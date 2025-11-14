@@ -1,6 +1,6 @@
 # Run TypeScript type checking
 echo "🔍 Running TypeScript type check..."
-npm run typecheck
+yarn typecheck
 
 # If typecheck fails, prevent commit
 if [ $? -ne 0 ]; then

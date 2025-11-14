@@ -66,16 +66,16 @@ Accordion, Alert, Alert Dialog, Aspect Ratio, Avatar, Badge, Button, Card, Check
 
 ```bash
 # Install dependencies
-npm install
+yarn install
 
 # Run on iOS
-npm run ios
+yarn ios
 
 # Run on Android
-npm run android
+yarn android
 
 # Run on Web
-npm run web
+yarn web
 ```
 
 ## 📂 Project Structure
@@ -180,11 +180,12 @@ Based on todo.md, the next features to implement are:
 ## 🔧 Available Scripts
 
 ```bash
-npm run dev      # Start development server with cache clear
-npm run android  # Run on Android emulator
-npm run ios      # Run on iOS simulator (Mac only)
-npm run web      # Run on web browser
-npm run clean    # Remove .expo and node_modules
+yarn dev        # Start development server with cache clear
+yarn android    # Run on Android emulator
+yarn ios        # Run on iOS simulator (Mac only)
+yarn web        # Run on web browser
+yarn typecheck  # Run TypeScript type checking
+yarn clean      # Remove .expo, node_modules, and yarn.lock
 ```
 
 ## 🎨 Color Palette
