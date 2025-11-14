@@ -230,7 +230,7 @@ export default function DashboardScreen() {
           title: 'Patterns & Insights',
         }}
       />
-      <ScrollView className="flex-1 bg-background p-4">
+      <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16 }}>
         {isLoading ? (
           <View className="items-center justify-center py-12">
             <Text className="text-muted-foreground">Analyzing patterns...</Text>
