@@ -36,6 +36,26 @@ export default function HomeScreen() {
     init();
   }, []);
 
+  // Auto-load sample data on first visit
+  React.useEffect(() => {
+    const autoLoadSampleData = async () => {
+      const hasSeenBefore = localStorage.getItem('life-events-tracker-initialized');
+
+      if (!hasSeenBefore && !isLoading && events.length === 0) {
+        console.log('First visit detected - loading sample data...');
+        try {
+          await addSampleData();
+          await loadEvents();
+          localStorage.setItem('life-events-tracker-initialized', 'true');
+        } catch (error) {
+          console.error('Failed to load sample data:', error);
+        }
+      }
+    };
+
+    autoLoadSampleData();
+  }, [events.length, isLoading]);
+
   const weekDays = React.useMemo(() => getWeekDays(currentWeekDate), [currentWeekDate]);
 
   const handlePreviousWeek = () => {
