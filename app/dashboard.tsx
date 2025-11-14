@@ -277,7 +277,7 @@ export default function DashboardScreen() {
     ).sort();
 
     // Create chart data with all events combined
-    const chartData = allDates.map((date) => {
+    const combinedChartData = allDates.map((date) => {
       const dataPoint: any = {
         date: format(parseISO(date), 'MMM d'),
         fullDate: date,
@@ -302,7 +302,7 @@ export default function DashboardScreen() {
     });
 
     // Calculate chart width based on number of data points for scrolling
-    const dataPointsCount = chartData.length;
+    const dataPointsCount = combinedChartData.length;
     const minChartWidth = screenWidth - 64; // Account for padding
     const chartWidth = Math.max(minChartWidth, dataPointsCount * 3); // 3px per data point minimum
 
@@ -316,7 +316,7 @@ export default function DashboardScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={true} className="mb-2">
           <View style={{ width: chartWidth, height: 300 }}>
             <ResponsiveContainer width={chartWidth} height={300}>
-              <LineChart data={chartData}>
+              <LineChart data={combinedChartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#333" />
                 <XAxis
                   dataKey="date"
