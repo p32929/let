@@ -20,8 +20,8 @@
 - [x] Design and implement week header component
 - [x] Highlight current day in week view
 - [x] Create day selector/navigator
-- [ ] Implement swipe gestures for week navigation
-- [ ] Add week-to-week transition animations
+- [x] Implement swipe gestures for week navigation
+- [x] Add week-to-week transition animations
 - [x] Display events list for selected day
 
 ## Phase 4: Event Management
@@ -30,9 +30,9 @@
   - [x] Type selector (Boolean/Number/String)
   - [x] Unit label input (optional)
   - [x] Color/icon picker (optional)
-- [ ] Create "Edit Event" screen/modal
-- [ ] Implement delete event functionality with confirmation
-- [ ] Add event reordering/sorting capability
+- [x] Create "Edit Event" screen/modal
+- [x] Implement delete event functionality with confirmation
+- [x] Add event reordering/sorting capability
 - [ ] Create event templates/presets (Sleep, Water, Mood, etc.)
 
 ## Phase 5: Tracking Widgets (In-App)
