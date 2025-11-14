@@ -256,9 +256,6 @@ export default function DashboardScreen() {
       };
     });
 
-    // Use first event's data length as reference
-    const dataLength = normalizedData[0].data.length;
-
     return (
       <View className="bg-card border border-border rounded-lg p-4 mb-4">
         <Text className="font-semibold text-lg mb-2">All Events Combined</Text>
@@ -279,31 +276,18 @@ export default function DashboardScreen() {
           ))}
         </View>
 
-        {/* Combined Chart */}
-        <LineChart
-          style={{ height: 200, width: screenWidth - 64 }}
-          data={normalizedData[0].data}
-          contentInset={{ top: 20, bottom: 20 }}
-          curve={shape.curveNatural}
-        >
-          {normalizedData.slice(1).map(({ event, data }, index) => (
+        {/* Combined Chart - Render each as separate LineChart */}
+        <View style={{ height: 200, width: screenWidth - 64, position: 'relative' }}>
+          {normalizedData.map(({ event, data }) => (
             <LineChart
               key={event.id}
               style={{ position: 'absolute', height: 200, width: screenWidth - 64 }}
               data={data}
               svg={{ stroke: event.color, strokeWidth: 2 }}
               contentInset={{ top: 20, bottom: 20 }}
-              curve={shape.curveNatural}
             />
           ))}
-          <LineChart
-            style={{ position: 'absolute', height: 200, width: screenWidth - 64 }}
-            data={normalizedData[0].data}
-            svg={{ stroke: normalizedData[0].event.color, strokeWidth: 2 }}
-            contentInset={{ top: 20, bottom: 20 }}
-            curve={shape.curveNatural}
-          />
-        </LineChart>
+        </View>
 
         <Text className="text-xs text-muted-foreground mt-3">
           * Values normalized to 0-100% scale for visual comparison
