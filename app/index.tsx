@@ -17,6 +17,7 @@ export default function HomeScreen() {
   const [currentWeekDate, setCurrentWeekDate] = React.useState(new Date());
   const [selectedDate, setSelectedDate] = React.useState(new Date());
   const [loadingSampleData, setLoadingSampleData] = React.useState(false);
+  const [showSampleDataPrompt, setShowSampleDataPrompt] = React.useState(false);
   const { events, loadEvents, isLoading } = useEventsStore();
 
   // Animated values for swipe gestures
@@ -36,24 +37,17 @@ export default function HomeScreen() {
     init();
   }, []);
 
-  // Auto-load sample data on first visit
+  // Show sample data prompt on first visit
   React.useEffect(() => {
-    const autoLoadSampleData = async () => {
+    const checkFirstVisit = () => {
       const hasSeenBefore = localStorage.getItem('life-events-tracker-initialized');
 
       if (!hasSeenBefore && !isLoading && events.length === 0) {
-        console.log('First visit detected - loading sample data...');
-        try {
-          await addSampleData();
-          await loadEvents();
-          localStorage.setItem('life-events-tracker-initialized', 'true');
-        } catch (error) {
-          console.error('Failed to load sample data:', error);
-        }
+        setShowSampleDataPrompt(true);
       }
     };
 
-    autoLoadSampleData();
+    checkFirstVisit();
   }, [events.length, isLoading]);
 
   const weekDays = React.useMemo(() => getWeekDays(currentWeekDate), [currentWeekDate]);
@@ -73,13 +67,20 @@ export default function HomeScreen() {
   const handleLoadSampleData = async () => {
     try {
       setLoadingSampleData(true);
+      setShowSampleDataPrompt(false);
       await addSampleData();
       await loadEvents();
+      localStorage.setItem('life-events-tracker-initialized', 'true');
     } catch (error) {
       console.error('Failed to load sample data:', error);
     } finally {
       setLoadingSampleData(false);
     }
+  };
+
+  const handleDismissSampleDataPrompt = () => {
+    setShowSampleDataPrompt(false);
+    localStorage.setItem('life-events-tracker-initialized', 'true');
   };
 
   // Swipe gesture for week navigation
@@ -214,14 +215,11 @@ export default function HomeScreen() {
                 <Text className="text-muted-foreground">Loading events...</Text>
               </View>
             ) : events.length === 0 ? (
-              <View className="items-center justify-center py-12 gap-4">
+              <View className="items-center justify-center py-12">
                 <Text className="text-center text-muted-foreground mb-2">No events yet</Text>
                 <Text className="text-center text-sm text-muted-foreground">
                   Tap the + button to create your first event
                 </Text>
-                <Button onPress={handleLoadSampleData} disabled={loadingSampleData} className="mt-4">
-                  <Text>{loadingSampleData ? 'Loading...' : 'Load Sample Data'}</Text>
-                </Button>
               </View>
             ) : (
               <View className="gap-3">
@@ -233,6 +231,31 @@ export default function HomeScreen() {
           </ScrollView>
         </Animated.View>
       </GestureDetector>
+
+      {/* Sample Data Prompt Dialog */}
+      {showSampleDataPrompt && (
+        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4">
+          <View className="bg-card border border-border rounded-lg p-6 max-w-md w-full">
+            <Text className="text-xl font-bold mb-2">Welcome! 👋</Text>
+            <Text className="text-muted-foreground mb-4">
+              Would you like to load sample data to see how the app works? This will create 4
+              events with 30 days of tracking data to demonstrate pattern insights.
+            </Text>
+            <View className="flex-row gap-3">
+              <Button
+                variant="outline"
+                onPress={handleDismissSampleDataPrompt}
+                className="flex-1"
+              >
+                <Text>No, Start Fresh</Text>
+              </Button>
+              <Button onPress={handleLoadSampleData} disabled={loadingSampleData} className="flex-1">
+                <Text>{loadingSampleData ? 'Loading...' : 'Yes, Load Sample'}</Text>
+              </Button>
+            </View>
+          </View>
+        </View>
+      )}
     </>
   );
 }
