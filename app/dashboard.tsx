@@ -4,12 +4,8 @@ import * as React from 'react';
 import { View, ScrollView, Dimensions } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getEventValuesForDateRange } from '@/db/operations/events';
-import { format, subDays } from 'date-fns';
-// @ts-ignore - No types available
-import { LineChart } from 'react-native-svg-charts';
-// @ts-ignore - No types available
-import * as shape from 'd3-shape';
-import { Line, G } from 'react-native-svg';
+import { format, subDays, parseISO } from 'date-fns';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { Event } from '@/types/events';
 
 const screenWidth = Dimensions.get('window').width;
@@ -236,24 +232,38 @@ export default function DashboardScreen() {
     if (eventData.length === 0) return null;
 
     // Filter out string events and get numeric ones
-    const numericData = eventData.filter((d) => d.event.type !== 'string' && d.dataPoints.length > 0);
+    const numericEvents = eventData.filter((d) => d.event.type !== 'string' && d.dataPoints.length > 0);
 
-    if (numericData.length === 0) return null;
+    if (numericEvents.length === 0) return null;
 
-    // Normalize all data to 0-100 scale for comparison
-    const normalizedData = numericData.map(({ event, dataPoints }) => {
-      const values = dataPoints.map((d) => d.value);
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      const range = max - min || 1;
+    // Get all unique dates
+    const allDates = Array.from(
+      new Set(numericEvents.flatMap((d) => d.dataPoints.map((p) => p.date)))
+    ).sort();
 
-      const normalized = values.map((v) => ((v - min) / range) * 100);
-
-      return {
-        event,
-        data: normalized,
-        originalData: dataPoints,
+    // Create chart data with all events combined
+    const chartData = allDates.map((date) => {
+      const dataPoint: any = {
+        date: format(parseISO(date), 'MMM d'),
+        fullDate: date,
       };
+
+      numericEvents.forEach(({ event, dataPoints }) => {
+        const point = dataPoints.find((p) => p.date === date);
+        if (point) {
+          // Normalize to 0-100 scale
+          const values = dataPoints.map((d) => d.value);
+          const min = Math.min(...values);
+          const max = Math.max(...values);
+          const range = max - min || 1;
+          const normalized = ((point.value - min) / range) * 100;
+
+          dataPoint[event.name] = normalized;
+          dataPoint[`${event.name}_original`] = point.value;
+        }
+      });
+
+      return dataPoint;
     });
 
     return (
@@ -263,34 +273,46 @@ export default function DashboardScreen() {
           Normalized view to see patterns (last 30 days)
         </Text>
 
-        {/* Legend */}
-        <View className="flex-row flex-wrap gap-3 mb-4">
-          {normalizedData.map(({ event }) => (
-            <View key={event.id} className="flex-row items-center">
-              <View
-                className="w-3 h-3 rounded-full mr-2"
-                style={{ backgroundColor: event.color }}
+        <View style={{ width: '100%', height: 300 }}>
+          <ResponsiveContainer>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+              <XAxis
+                dataKey="date"
+                stroke="#999"
+                tick={{ fill: '#999', fontSize: 12 }}
               />
-              <Text className="text-xs">{event.name}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Combined Chart - Render each as separate LineChart */}
-        <View style={{ height: 200, width: screenWidth - 64, position: 'relative' }}>
-          {normalizedData.map(({ event, data }) => (
-            <LineChart
-              key={event.id}
-              style={{ position: 'absolute', height: 200, width: screenWidth - 64 }}
-              data={data}
-              svg={{ stroke: event.color, strokeWidth: 2 }}
-              contentInset={{ top: 20, bottom: 20 }}
-            />
-          ))}
+              <YAxis
+                stroke="#999"
+                tick={{ fill: '#999', fontSize: 12 }}
+                label={{ value: 'Normalized %', angle: -90, position: 'insideLeft', fill: '#999' }}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1a1a1a',
+                  border: '1px solid #333',
+                  borderRadius: 8,
+                }}
+                labelStyle={{ color: '#999' }}
+                itemStyle={{ color: '#fff' }}
+              />
+              <Legend wrapperStyle={{ color: '#999' }} />
+              {numericEvents.map(({ event }) => (
+                <Line
+                  key={event.id}
+                  type="monotone"
+                  dataKey={event.name}
+                  stroke={event.color}
+                  strokeWidth={2}
+                  dot={false}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
         </View>
 
         <Text className="text-xs text-muted-foreground mt-3">
-          * Values normalized to 0-100% scale for visual comparison
+          * Values normalized to 0-100% scale for visual comparison. Hover over the chart to see details!
         </Text>
       </View>
     );
@@ -342,41 +364,41 @@ export default function DashboardScreen() {
                 </Text>
 
                 {patterns.map((pattern, index) => (
-              <View
-                key={index}
-                className="bg-card border border-border rounded-lg p-4 mb-3"
-              >
-                {/* Event indicators */}
-                <View className="flex-row items-center mb-3">
-                  {pattern.events.map((event, i) => (
-                    <React.Fragment key={event.id}>
-                      {i > 0 && <Text className="mx-2 text-muted-foreground">→</Text>}
-                      <View
-                        className="w-3 h-3 rounded-full mr-2"
-                        style={{ backgroundColor: event.color }}
-                      />
-                      <Text className="font-semibold text-sm">{event.name}</Text>
-                    </React.Fragment>
-                  ))}
-                </View>
+                  <View
+                    key={index}
+                    className="bg-card border border-border rounded-lg p-4 mb-3"
+                  >
+                    {/* Event indicators */}
+                    <View className="flex-row items-center mb-3">
+                      {pattern.events.map((event, i) => (
+                        <React.Fragment key={event.id}>
+                          {i > 0 && <Text className="mx-2 text-muted-foreground">→</Text>}
+                          <View
+                            className="w-3 h-3 rounded-full mr-2"
+                            style={{ backgroundColor: event.color }}
+                          />
+                          <Text className="font-semibold text-sm">{event.name}</Text>
+                        </React.Fragment>
+                      ))}
+                    </View>
 
-                {/* Pattern description */}
-                <Text className="text-base mb-3">{pattern.description}</Text>
+                    {/* Pattern description */}
+                    <Text className="text-base mb-3">{pattern.description}</Text>
 
-                {/* Confidence indicator */}
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center">
-                    <Text className="text-xs text-muted-foreground mr-2">
-                      {getConfidenceLabel(pattern.confidence)}
-                    </Text>
-                    <Text className={`text-xs font-semibold ${getConfidenceColor(pattern.confidence)}`}>
-                      {pattern.confidence}%
-                    </Text>
-                  </View>
-                  <Text className="text-xs text-muted-foreground capitalize">
-                    {pattern.type.replace('-', ' ')}
-                  </Text>
-                </View>
+                    {/* Confidence indicator */}
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-row items-center">
+                        <Text className="text-xs text-muted-foreground mr-2">
+                          {getConfidenceLabel(pattern.confidence)}
+                        </Text>
+                        <Text className={`text-xs font-semibold ${getConfidenceColor(pattern.confidence)}`}>
+                          {pattern.confidence}%
+                        </Text>
+                      </View>
+                      <Text className="text-xs text-muted-foreground capitalize">
+                        {pattern.type.replace('-', ' ')}
+                      </Text>
+                    </View>
                   </View>
                 ))}
               </View>
