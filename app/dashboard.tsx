@@ -1,39 +1,31 @@
 import { Text } from '@/components/ui/text';
 import { Stack } from 'expo-router';
 import * as React from 'react';
-import { View, ScrollView, Dimensions } from 'react-native';
+import { View, ScrollView } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getEventValuesForDateRange } from '@/db/operations/events';
-import { format, subDays, parseISO } from 'date-fns';
-// @ts-ignore - No types available
-import { LineChart } from 'react-native-svg-charts';
-// @ts-ignore - No types available
-import * as shape from 'd3-shape';
+import { format, subDays } from 'date-fns';
 import type { Event } from '@/types/events';
-
-const screenWidth = Dimensions.get('window').width;
 
 interface EventDataPoint {
   date: string;
   value: number;
 }
 
-interface CorrelationInsight {
-  event1: Event;
-  event2: Event;
-  correlation: number;
-  insight: string;
+interface Pattern {
+  description: string;
+  confidence: number; // 0-100%
+  type: 'threshold' | 'co-occurrence' | 'sequence';
+  events: Event[];
 }
 
 export default function DashboardScreen() {
   const { events } = useEventsStore();
-  const [eventData, setEventData] = React.useState<Record<number, EventDataPoint[]>>({});
+  const [patterns, setPatterns] = React.useState<Pattern[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [correlations, setCorrelations] = React.useState<CorrelationInsight[]>([]);
 
-  // Load last 30 days of data for all events
   React.useEffect(() => {
-    const loadData = async () => {
+    const analyzePatterns = async () => {
       setIsLoading(true);
       try {
         const endDate = new Date();
@@ -41,261 +33,273 @@ export default function DashboardScreen() {
         const startStr = format(startDate, 'yyyy-MM-dd');
         const endStr = format(endDate, 'yyyy-MM-dd');
 
+        // Load all data
         const dataPromises = events.map(async (event) => {
           const values = await getEventValuesForDateRange(event.id, startStr, endStr);
           const dataPoints: EventDataPoint[] = values.map((v) => ({
             date: v.date,
             value: event.type === 'boolean' ? (v.value === 'true' ? 1 : 0) : parseFloat(v.value) || 0,
           }));
-          return { eventId: event.id, dataPoints };
+          return { event, dataPoints };
         });
 
-        const results = await Promise.all(dataPromises);
-        const dataMap: Record<number, EventDataPoint[]> = {};
-        results.forEach(({ eventId, dataPoints }) => {
-          dataMap[eventId] = dataPoints;
-        });
-
-        setEventData(dataMap);
-
-        // Calculate correlations
-        const insights = calculateCorrelations(events, dataMap);
-        setCorrelations(insights);
+        const allData = await Promise.all(dataPromises);
+        const discoveredPatterns = discoverPatterns(allData);
+        setPatterns(discoveredPatterns);
       } catch (error) {
-        console.error('Failed to load dashboard data:', error);
+        console.error('Failed to analyze patterns:', error);
       } finally {
         setIsLoading(false);
       }
     };
 
     if (events.length > 0) {
-      loadData();
+      analyzePatterns();
     } else {
       setIsLoading(false);
     }
   }, [events]);
 
-  const calculateCorrelations = (
-    allEvents: Event[],
-    dataMap: Record<number, EventDataPoint[]>
-  ): CorrelationInsight[] => {
-    const insights: CorrelationInsight[] = [];
-    const numericEvents = allEvents.filter((e) => e.type !== 'string');
+  const discoverPatterns = (
+    allData: { event: Event; dataPoints: EventDataPoint[] }[]
+  ): Pattern[] => {
+    const patterns: Pattern[] = [];
+    const numericEvents = allData.filter((d) => d.event.type !== 'string');
 
-    // Compare each pair of events
-    for (let i = 0; i < numericEvents.length; i++) {
-      for (let j = i + 1; j < numericEvents.length; j++) {
-        const event1 = numericEvents[i];
-        const event2 = numericEvents[j];
-        const data1 = dataMap[event1.id] || [];
-        const data2 = dataMap[event2.id] || [];
+    if (numericEvents.length < 2) return patterns;
 
-        if (data1.length < 3 || data2.length < 3) continue;
+    // 1. THRESHOLD PATTERNS: "When X > threshold, Y happens"
+    for (const { event: event1, dataPoints: data1 } of numericEvents) {
+      if (data1.length < 5) continue;
 
-        // Find common dates
-        const commonDates = data1
-          .map((d) => d.date)
-          .filter((date) => data2.some((d2) => d2.date === date));
+      // Find meaningful thresholds
+      const values = data1.map((d) => d.value);
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      const thresholds = event1.type === 'boolean' ? [0.5] : [avg, avg * 0.7, avg * 1.3];
 
-        if (commonDates.length < 3) continue;
+      for (const threshold of thresholds) {
+        for (const { event: event2, dataPoints: data2 } of numericEvents) {
+          if (event1.id === event2.id || data2.length < 5) continue;
 
-        // Get values for common dates
-        const values1 = commonDates.map((date) => data1.find((d) => d.date === date)!.value);
-        const values2 = commonDates.map((date) => data2.find((d) => d.date === date)!.value);
-
-        // Calculate correlation coefficient
-        const correlation = calculatePearsonCorrelation(values1, values2);
-
-        if (Math.abs(correlation) > 0.5) {
-          // Strong correlation
-          const insight = generateInsight(event1, event2, correlation, values1, values2);
-          insights.push({ event1, event2, correlation, insight });
+          const pattern = analyzeThresholdPattern(
+            event1,
+            data1,
+            threshold,
+            event2,
+            data2
+          );
+          if (pattern) patterns.push(pattern);
         }
       }
     }
 
-    return insights.sort((a, b) => Math.abs(b.correlation) - Math.abs(a.correlation));
+    // 2. CO-OCCURRENCE PATTERNS: "When X happens, Y happens N% of the time"
+    for (let i = 0; i < numericEvents.length; i++) {
+      for (let j = i + 1; j < numericEvents.length; j++) {
+        const { event: event1, dataPoints: data1 } = numericEvents[i];
+        const { event: event2, dataPoints: data2 } = numericEvents[j];
+
+        const pattern = analyzeCoOccurrence(event1, data1, event2, data2);
+        if (pattern) patterns.push(pattern);
+      }
+    }
+
+    // Sort by confidence and return top patterns
+    return patterns.sort((a, b) => b.confidence - a.confidence).slice(0, 10);
   };
 
-  const calculatePearsonCorrelation = (x: number[], y: number[]): number => {
-    const n = x.length;
-    const sumX = x.reduce((a, b) => a + b, 0);
-    const sumY = y.reduce((a, b) => a + b, 0);
-    const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
-    const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
-    const sumY2 = y.reduce((sum, yi) => sum + yi * yi, 0);
-
-    const numerator = n * sumXY - sumX * sumY;
-    const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
-
-    return denominator === 0 ? 0 : numerator / denominator;
-  };
-
-  const generateInsight = (
+  const analyzeThresholdPattern = (
     event1: Event,
+    data1: EventDataPoint[],
+    threshold: number,
     event2: Event,
-    correlation: number,
-    values1: number[],
-    values2: number[]
-  ): string => {
-    const avg1 = values1.reduce((a, b) => a + b, 0) / values1.length;
-    const avg2 = values2.reduce((a, b) => a + b, 0) / values2.length;
+    data2: EventDataPoint[]
+  ): Pattern | null => {
+    // Find common dates
+    const commonDates = data1
+      .map((d) => d.date)
+      .filter((date) => data2.some((d2) => d2.date === date));
 
+    if (commonDates.length < 5) return null;
+
+    // Split into above/below threshold
+    const aboveThreshold = commonDates.filter((date) => {
+      const val = data1.find((d) => d.date === date)!.value;
+      return val > threshold;
+    });
+
+    const belowThreshold = commonDates.filter((date) => {
+      const val = data1.find((d) => d.date === date)!.value;
+      return val <= threshold;
+    });
+
+    if (aboveThreshold.length < 3 || belowThreshold.length < 3) return null;
+
+    // Calculate event2 averages
+    const avgWhenAbove =
+      aboveThreshold.reduce((sum, date) => {
+        return sum + data2.find((d) => d.date === date)!.value;
+      }, 0) / aboveThreshold.length;
+
+    const avgWhenBelow =
+      belowThreshold.reduce((sum, date) => {
+        return sum + data2.find((d) => d.date === date)!.value;
+      }, 0) / belowThreshold.length;
+
+    // Calculate difference and confidence
+    const difference = Math.abs(avgWhenAbove - avgWhenBelow);
+    const avgValue = data2.map((d) => d.value).reduce((a, b) => a + b, 0) / data2.length;
+    const percentDiff = (difference / avgValue) * 100;
+
+    if (percentDiff < 20) return null; // Less than 20% difference is not meaningful
+
+    const confidence = Math.min(95, percentDiff);
     const unit1 = event1.unit ? ` ${event1.unit}` : '';
     const unit2 = event2.unit ? ` ${event2.unit}` : '';
 
-    if (correlation > 0.5) {
-      return `When ${event1.name} is high (avg ${avg1.toFixed(1)}${unit1}), ${event2.name} tends to be high (avg ${avg2.toFixed(1)}${unit2})`;
-    } else {
-      return `When ${event1.name} is high (avg ${avg1.toFixed(1)}${unit1}), ${event2.name} tends to be low (avg ${avg2.toFixed(1)}${unit2})`;
+    const thresholdStr =
+      event1.type === 'boolean' ? 'happens' : `> ${threshold.toFixed(1)}${unit1}`;
+    const direction = avgWhenAbove > avgWhenBelow ? 'higher' : 'lower';
+
+    return {
+      description: `When ${event1.name} ${thresholdStr}, ${event2.name} is ${direction} (${avgWhenAbove.toFixed(1)}${unit2} vs ${avgWhenBelow.toFixed(1)}${unit2})`,
+      confidence: Math.round(confidence),
+      type: 'threshold',
+      events: [event1, event2],
+    };
+  };
+
+  const analyzeCoOccurrence = (
+    event1: Event,
+    data1: EventDataPoint[],
+    event2: Event,
+    data2: EventDataPoint[]
+  ): Pattern | null => {
+    // Find common dates
+    const commonDates = data1
+      .map((d) => d.date)
+      .filter((date) => data2.some((d2) => d2.date === date));
+
+    if (commonDates.length < 5) return null;
+
+    // For boolean events, check co-occurrence
+    if (event1.type === 'boolean' || event2.type === 'boolean') {
+      const event1Happens = commonDates.filter((date) => {
+        const val = data1.find((d) => d.date === date)!.value;
+        return val > 0.5;
+      });
+
+      const bothHappen = event1Happens.filter((date) => {
+        const val = data2.find((d) => d.date === date)!.value;
+        return val > 0.5;
+      });
+
+      if (event1Happens.length < 3) return null;
+
+      const coOccurrenceRate = (bothHappen.length / event1Happens.length) * 100;
+
+      if (coOccurrenceRate < 60 && coOccurrenceRate > 40) return null; // Not meaningful
+
+      return {
+        description: `When ${event1.name} happens, ${event2.name} happens ${coOccurrenceRate.toFixed(0)}% of the time`,
+        confidence: Math.round(Math.abs(coOccurrenceRate - 50) + 50),
+        type: 'co-occurrence',
+        events: [event1, event2],
+      };
     }
+
+    return null;
   };
 
-  const getChartData = (event: Event) => {
-    const data = eventData[event.id] || [];
-    if (event.type === 'string' || data.length === 0) return null;
-    return data.map((d) => d.value);
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence >= 80) return 'text-green-600';
+    if (confidence >= 60) return 'text-yellow-600';
+    return 'text-orange-600';
   };
 
-  const renderEventChart = (event: Event) => {
-    const chartData = getChartData(event);
-    if (!chartData || chartData.length === 0) return null;
-
-    const max = Math.max(...chartData);
-    const min = Math.min(...chartData);
-    const avg = chartData.reduce((a, b) => a + b, 0) / chartData.length;
-
-    return (
-      <View
-        key={event.id}
-        className="bg-card border border-border rounded-lg p-4 mb-4"
-        style={{ borderLeftWidth: 4, borderLeftColor: event.color }}
-      >
-        <Text className="font-semibold text-base mb-2">{event.name}</Text>
-        <Text className="text-sm text-muted-foreground mb-3">
-          {event.type === 'boolean' ? 'Yes/No' : `Number${event.unit ? ` (${event.unit})` : ''}`}
-        </Text>
-
-        <LineChart
-          style={{ height: 150, width: screenWidth - 64 }}
-          data={chartData}
-          svg={{ stroke: event.color, strokeWidth: 2 }}
-          contentInset={{ top: 20, bottom: 20 }}
-          curve={shape.curveNatural}
-        />
-
-        <View className="mt-3 flex-row justify-between">
-          <View>
-            <Text className="text-xs text-muted-foreground">Avg</Text>
-            <Text className="font-semibold">{avg.toFixed(1)}</Text>
-          </View>
-          <View>
-            <Text className="text-xs text-muted-foreground">Min</Text>
-            <Text className="font-semibold">{min.toFixed(1)}</Text>
-          </View>
-          <View>
-            <Text className="text-xs text-muted-foreground">Max</Text>
-            <Text className="font-semibold">{max.toFixed(1)}</Text>
-          </View>
-          <View>
-            <Text className="text-xs text-muted-foreground">Entries</Text>
-            <Text className="font-semibold">{chartData.length}</Text>
-          </View>
-        </View>
-      </View>
-    );
+  const getConfidenceLabel = (confidence: number) => {
+    if (confidence >= 80) return 'High confidence';
+    if (confidence >= 60) return 'Medium confidence';
+    return 'Low confidence';
   };
 
   return (
     <>
       <Stack.Screen
         options={{
-          title: 'Dashboard & Insights',
+          title: 'Patterns & Insights',
         }}
       />
       <ScrollView className="flex-1 bg-background p-4">
         {isLoading ? (
           <View className="items-center justify-center py-12">
-            <Text className="text-muted-foreground">Loading dashboard...</Text>
+            <Text className="text-muted-foreground">Analyzing patterns...</Text>
           </View>
         ) : events.length === 0 ? (
           <View className="items-center justify-center py-12">
             <Text className="text-center text-muted-foreground mb-2">No events yet</Text>
             <Text className="text-center text-sm text-muted-foreground">
-              Create events to see trends and insights
+              Create events and track data to discover patterns
+            </Text>
+          </View>
+        ) : patterns.length === 0 ? (
+          <View className="items-center justify-center py-12">
+            <Text className="text-center text-muted-foreground mb-2">
+              Not enough data yet
+            </Text>
+            <Text className="text-center text-sm text-muted-foreground">
+              Track events for a few more days to discover patterns
             </Text>
           </View>
         ) : (
           <View>
-            {/* Correlation Insights Section */}
-            {correlations.length > 0 && (
-              <View className="mb-6">
-                <Text className="text-2xl font-bold mb-1">💡 Insights</Text>
-                <Text className="text-muted-foreground mb-4">
-                  Patterns and correlations in your data
-                </Text>
-
-                {correlations.map((insight, index) => (
-                  <View
-                    key={`${insight.event1.id}-${insight.event2.id}`}
-                    className="bg-card border border-border rounded-lg p-4 mb-3"
-                  >
-                    <View className="flex-row items-center mb-2">
-                      <View
-                        className="w-3 h-3 rounded-full mr-2"
-                        style={{ backgroundColor: insight.event1.color }}
-                      />
-                      <Text className="font-semibold">{insight.event1.name}</Text>
-                      <Text className="mx-2 text-muted-foreground">×</Text>
-                      <View
-                        className="w-3 h-3 rounded-full mr-2"
-                        style={{ backgroundColor: insight.event2.color }}
-                      />
-                      <Text className="font-semibold">{insight.event2.name}</Text>
-                    </View>
-
-                    <Text className="text-sm mb-2">{insight.insight}</Text>
-
-                    <View className="flex-row items-center">
-                      <Text className="text-xs text-muted-foreground">Correlation: </Text>
-                      <Text
-                        className={`text-xs font-semibold ${
-                          insight.correlation > 0 ? 'text-green-600' : 'text-red-600'
-                        }`}
-                      >
-                        {(insight.correlation * 100).toFixed(0)}%{' '}
-                        {insight.correlation > 0 ? 'Positive' : 'Negative'}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* Trends Section */}
-            <View>
-              <Text className="text-2xl font-bold mb-1">📊 Trends</Text>
-              <Text className="text-muted-foreground mb-4">Last 30 days of data</Text>
-
-              {events.filter((e) => e.type !== 'string').map(renderEventChart)}
-
-              {events.filter((e) => e.type === 'string').length > 0 && (
-                <View className="bg-muted rounded-lg p-4">
-                  <Text className="text-sm text-muted-foreground">
-                    Text events are not shown in charts. View individual entries in the weekly
-                    view.
-                  </Text>
-                </View>
-              )}
-
-              {events.filter((e) => e.type !== 'string').length === 0 && (
-                <View className="bg-muted rounded-lg p-4">
-                  <Text className="text-sm text-muted-foreground">
-                    Add numeric or boolean events to see trend charts
-                  </Text>
-                </View>
-              )}
+            {/* Header */}
+            <View className="mb-6">
+              <Text className="text-2xl font-bold mb-1">🔍 Discovered Patterns</Text>
+              <Text className="text-muted-foreground">
+                Based on the last 30 days of your data
+              </Text>
             </View>
+
+            {/* Patterns List */}
+            {patterns.map((pattern, index) => (
+              <View
+                key={index}
+                className="bg-card border border-border rounded-lg p-4 mb-3"
+              >
+                {/* Event indicators */}
+                <View className="flex-row items-center mb-3">
+                  {pattern.events.map((event, i) => (
+                    <React.Fragment key={event.id}>
+                      {i > 0 && <Text className="mx-2 text-muted-foreground">→</Text>}
+                      <View
+                        className="w-3 h-3 rounded-full mr-2"
+                        style={{ backgroundColor: event.color }}
+                      />
+                      <Text className="font-semibold text-sm">{event.name}</Text>
+                    </React.Fragment>
+                  ))}
+                </View>
+
+                {/* Pattern description */}
+                <Text className="text-base mb-3">{pattern.description}</Text>
+
+                {/* Confidence indicator */}
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-row items-center">
+                    <Text className="text-xs text-muted-foreground mr-2">
+                      {getConfidenceLabel(pattern.confidence)}
+                    </Text>
+                    <Text className={`text-xs font-semibold ${getConfidenceColor(pattern.confidence)}`}>
+                      {pattern.confidence}%
+                    </Text>
+                  </View>
+                  <Text className="text-xs text-muted-foreground capitalize">
+                    {pattern.type.replace('-', ' ')}
+                  </Text>
+                </View>
+              </View>
+            ))}
           </View>
         )}
       </ScrollView>
