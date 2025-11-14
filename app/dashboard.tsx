@@ -1,11 +1,17 @@
 import { Text } from '@/components/ui/text';
 import { Stack } from 'expo-router';
 import * as React from 'react';
-import { View, ScrollView } from 'react-native';
+import { View, ScrollView, Dimensions } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getEventValuesForDateRange } from '@/db/operations/events';
 import { format, subDays } from 'date-fns';
+// @ts-ignore - No types available
+import { LineChart } from 'react-native-svg-charts';
+// @ts-ignore - No types available
+import * as shape from 'd3-shape';
 import type { Event } from '@/types/events';
+
+const screenWidth = Dimensions.get('window').width;
 
 interface EventDataPoint {
   date: string;
@@ -22,6 +28,7 @@ interface Pattern {
 export default function DashboardScreen() {
   const { events } = useEventsStore();
   const [patterns, setPatterns] = React.useState<Pattern[]>([]);
+  const [eventData, setEventData] = React.useState<{ event: Event; dataPoints: EventDataPoint[] }[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
@@ -44,6 +51,7 @@ export default function DashboardScreen() {
         });
 
         const allData = await Promise.all(dataPromises);
+        setEventData(allData);
         const discoveredPatterns = discoverPatterns(allData);
         setPatterns(discoveredPatterns);
       } catch (error) {
@@ -223,6 +231,57 @@ export default function DashboardScreen() {
     return 'Low confidence';
   };
 
+  const renderEventChart = (data: { event: Event; dataPoints: EventDataPoint[] }) => {
+    const { event, dataPoints } = data;
+
+    if (event.type === 'string' || dataPoints.length === 0) return null;
+
+    const chartData = dataPoints.map((d) => d.value);
+    const max = Math.max(...chartData);
+    const min = Math.min(...chartData);
+    const avg = chartData.reduce((a, b) => a + b, 0) / chartData.length;
+
+    return (
+      <View
+        key={event.id}
+        className="bg-card border border-border rounded-lg p-4 mb-4"
+        style={{ borderLeftWidth: 4, borderLeftColor: event.color }}
+      >
+        <Text className="font-semibold text-base mb-2">{event.name}</Text>
+        <Text className="text-sm text-muted-foreground mb-3">
+          {event.type === 'boolean' ? 'Yes/No' : `Number${event.unit ? ` (${event.unit})` : ''}`}
+        </Text>
+
+        <LineChart
+          style={{ height: 120, width: screenWidth - 64 }}
+          data={chartData}
+          svg={{ stroke: event.color, strokeWidth: 2 }}
+          contentInset={{ top: 20, bottom: 20 }}
+          curve={shape.curveNatural}
+        />
+
+        <View className="mt-3 flex-row justify-between">
+          <View>
+            <Text className="text-xs text-muted-foreground">Avg</Text>
+            <Text className="font-semibold">{avg.toFixed(1)}</Text>
+          </View>
+          <View>
+            <Text className="text-xs text-muted-foreground">Min</Text>
+            <Text className="font-semibold">{min.toFixed(1)}</Text>
+          </View>
+          <View>
+            <Text className="text-xs text-muted-foreground">Max</Text>
+            <Text className="font-semibold">{max.toFixed(1)}</Text>
+          </View>
+          <View>
+            <Text className="text-xs text-muted-foreground">Days</Text>
+            <Text className="font-semibold">{dataPoints.length}</Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <>
       <Stack.Screen
@@ -242,27 +301,33 @@ export default function DashboardScreen() {
               Create events and track data to discover patterns
             </Text>
           </View>
-        ) : patterns.length === 0 ? (
+        ) : eventData.length === 0 ? (
           <View className="items-center justify-center py-12">
             <Text className="text-center text-muted-foreground mb-2">
               Not enough data yet
             </Text>
             <Text className="text-center text-sm text-muted-foreground">
-              Track events for a few more days to discover patterns
+              Track events for a few more days to see trends
             </Text>
           </View>
         ) : (
           <View>
-            {/* Header */}
+            {/* Trends Section */}
             <View className="mb-6">
-              <Text className="text-2xl font-bold mb-1">🔍 Discovered Patterns</Text>
-              <Text className="text-muted-foreground">
-                Based on the last 30 days of your data
-              </Text>
+              <Text className="text-2xl font-bold mb-1">📊 Trends</Text>
+              <Text className="text-muted-foreground mb-4">Last 30 days of data</Text>
+              {eventData.map(renderEventChart)}
             </View>
 
-            {/* Patterns List */}
-            {patterns.map((pattern, index) => (
+            {/* Patterns Section */}
+            {patterns.length > 0 && (
+              <View className="mb-6">
+                <Text className="text-2xl font-bold mb-1">🔍 Discovered Patterns</Text>
+                <Text className="text-muted-foreground mb-4">
+                  Based on your tracked data
+                </Text>
+
+                {patterns.map((pattern, index) => (
               <View
                 key={index}
                 className="bg-card border border-border rounded-lg p-4 mb-3"
@@ -298,8 +363,10 @@ export default function DashboardScreen() {
                     {pattern.type.replace('-', ' ')}
                   </Text>
                 </View>
+                  </View>
+                ))}
               </View>
-            ))}
+            )}
           </View>
         )}
       </ScrollView>
