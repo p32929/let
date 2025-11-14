@@ -29,6 +29,7 @@ export default function DashboardScreen() {
   const { events } = useEventsStore();
   const [patterns, setPatterns] = React.useState<Pattern[]>([]);
   const [eventData, setEventData] = React.useState<{ event: Event; dataPoints: EventDataPoint[] }[]>([]);
+  const [chartData, setChartData] = React.useState<{ event: Event; dataPoints: EventDataPoint[] }[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [timeRange, setTimeRange] = React.useState<TimeRange>('30d');
 
@@ -41,17 +42,17 @@ export default function DashboardScreen() {
     }
   };
 
+  // Load ALL data once for pattern detection
   React.useEffect(() => {
-    const analyzePatterns = async () => {
+    const loadAllData = async () => {
       setIsLoading(true);
       try {
         const endDate = new Date();
-        const days = getDaysForRange(timeRange);
-        const startDate = subDays(endDate, days);
+        const startDate = subDays(endDate, 730); // Always load 2 years for patterns
         const startStr = format(startDate, 'yyyy-MM-dd');
         const endStr = format(endDate, 'yyyy-MM-dd');
 
-        // Load all data
+        // Load all data for pattern detection
         const dataPromises = events.map(async (event) => {
           const values = await getEventValuesForDateRange(event.id, startStr, endStr);
           const dataPoints: EventDataPoint[] = values.map((v) => ({
@@ -63,6 +64,8 @@ export default function DashboardScreen() {
 
         const allData = await Promise.all(dataPromises);
         setEventData(allData);
+
+        // Discover patterns from ALL data
         const discoveredPatterns = discoverPatterns(allData);
         setPatterns(discoveredPatterns);
       } catch (error) {
@@ -73,11 +76,29 @@ export default function DashboardScreen() {
     };
 
     if (events.length > 0) {
-      analyzePatterns();
+      loadAllData();
     } else {
       setIsLoading(false);
     }
-  }, [events, timeRange]);
+  }, [events]);
+
+  // Filter chart data based on selected time range
+  React.useEffect(() => {
+    if (eventData.length === 0) {
+      setChartData([]);
+      return;
+    }
+
+    const days = getDaysForRange(timeRange);
+    const cutoffDate = format(subDays(new Date(), days), 'yyyy-MM-dd');
+
+    const filteredChartData = eventData.map(({ event, dataPoints }) => ({
+      event,
+      dataPoints: dataPoints.filter((point) => point.date >= cutoffDate),
+    }));
+
+    setChartData(filteredChartData);
+  }, [eventData, timeRange]);
 
   const discoverPatterns = (
     allData: { event: Event; dataPoints: EventDataPoint[] }[]
@@ -243,10 +264,10 @@ export default function DashboardScreen() {
   };
 
   const renderCombinedChart = () => {
-    if (eventData.length === 0) return null;
+    if (chartData.length === 0) return null;
 
     // Filter out string events and get numeric ones
-    const numericEvents = eventData.filter((d) => d.event.type !== 'string' && d.dataPoints.length > 0);
+    const numericEvents = chartData.filter((d) => d.event.type !== 'string' && d.dataPoints.length > 0);
 
     if (numericEvents.length === 0) return null;
 
