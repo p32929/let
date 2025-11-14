@@ -9,6 +9,7 @@ import { format, subDays } from 'date-fns';
 import { LineChart } from 'react-native-svg-charts';
 // @ts-ignore - No types available
 import * as shape from 'd3-shape';
+import { Line, G } from 'react-native-svg';
 import type { Event } from '@/types/events';
 
 const screenWidth = Dimensions.get('window').width;
@@ -231,53 +232,82 @@ export default function DashboardScreen() {
     return 'Low confidence';
   };
 
-  const renderEventChart = (data: { event: Event; dataPoints: EventDataPoint[] }) => {
-    const { event, dataPoints } = data;
+  const renderCombinedChart = () => {
+    if (eventData.length === 0) return null;
 
-    if (event.type === 'string' || dataPoints.length === 0) return null;
+    // Filter out string events and get numeric ones
+    const numericData = eventData.filter((d) => d.event.type !== 'string' && d.dataPoints.length > 0);
 
-    const chartData = dataPoints.map((d) => d.value);
-    const max = Math.max(...chartData);
-    const min = Math.min(...chartData);
-    const avg = chartData.reduce((a, b) => a + b, 0) / chartData.length;
+    if (numericData.length === 0) return null;
+
+    // Normalize all data to 0-100 scale for comparison
+    const normalizedData = numericData.map(({ event, dataPoints }) => {
+      const values = dataPoints.map((d) => d.value);
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const range = max - min || 1;
+
+      const normalized = values.map((v) => ((v - min) / range) * 100);
+
+      return {
+        event,
+        data: normalized,
+        originalData: dataPoints,
+      };
+    });
+
+    // Use first event's data length as reference
+    const dataLength = normalizedData[0].data.length;
 
     return (
-      <View
-        key={event.id}
-        className="bg-card border border-border rounded-lg p-4 mb-4"
-        style={{ borderLeftWidth: 4, borderLeftColor: event.color }}
-      >
-        <Text className="font-semibold text-base mb-2">{event.name}</Text>
-        <Text className="text-sm text-muted-foreground mb-3">
-          {event.type === 'boolean' ? 'Yes/No' : `Number${event.unit ? ` (${event.unit})` : ''}`}
+      <View className="bg-card border border-border rounded-lg p-4 mb-4">
+        <Text className="font-semibold text-lg mb-2">All Events Combined</Text>
+        <Text className="text-sm text-muted-foreground mb-4">
+          Normalized view to see patterns (last 30 days)
         </Text>
 
+        {/* Legend */}
+        <View className="flex-row flex-wrap gap-3 mb-4">
+          {normalizedData.map(({ event }) => (
+            <View key={event.id} className="flex-row items-center">
+              <View
+                className="w-3 h-3 rounded-full mr-2"
+                style={{ backgroundColor: event.color }}
+              />
+              <Text className="text-xs">{event.name}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Combined Chart */}
         <LineChart
-          style={{ height: 120, width: screenWidth - 64 }}
-          data={chartData}
-          svg={{ stroke: event.color, strokeWidth: 2 }}
+          style={{ height: 200, width: screenWidth - 64 }}
+          data={normalizedData[0].data}
           contentInset={{ top: 20, bottom: 20 }}
           curve={shape.curveNatural}
-        />
+        >
+          {normalizedData.slice(1).map(({ event, data }, index) => (
+            <LineChart
+              key={event.id}
+              style={{ position: 'absolute', height: 200, width: screenWidth - 64 }}
+              data={data}
+              svg={{ stroke: event.color, strokeWidth: 2 }}
+              contentInset={{ top: 20, bottom: 20 }}
+              curve={shape.curveNatural}
+            />
+          ))}
+          <LineChart
+            style={{ position: 'absolute', height: 200, width: screenWidth - 64 }}
+            data={normalizedData[0].data}
+            svg={{ stroke: normalizedData[0].event.color, strokeWidth: 2 }}
+            contentInset={{ top: 20, bottom: 20 }}
+            curve={shape.curveNatural}
+          />
+        </LineChart>
 
-        <View className="mt-3 flex-row justify-between">
-          <View>
-            <Text className="text-xs text-muted-foreground">Avg</Text>
-            <Text className="font-semibold">{avg.toFixed(1)}</Text>
-          </View>
-          <View>
-            <Text className="text-xs text-muted-foreground">Min</Text>
-            <Text className="font-semibold">{min.toFixed(1)}</Text>
-          </View>
-          <View>
-            <Text className="text-xs text-muted-foreground">Max</Text>
-            <Text className="font-semibold">{max.toFixed(1)}</Text>
-          </View>
-          <View>
-            <Text className="text-xs text-muted-foreground">Days</Text>
-            <Text className="font-semibold">{dataPoints.length}</Text>
-          </View>
-        </View>
+        <Text className="text-xs text-muted-foreground mt-3">
+          * Values normalized to 0-100% scale for visual comparison
+        </Text>
       </View>
     );
   };
@@ -312,11 +342,11 @@ export default function DashboardScreen() {
           </View>
         ) : (
           <View>
-            {/* Trends Section */}
+            {/* Combined Chart */}
             <View className="mb-6">
               <Text className="text-2xl font-bold mb-1">📊 Trends</Text>
               <Text className="text-muted-foreground mb-4">Last 30 days of data</Text>
-              {eventData.map(renderEventChart)}
+              {renderCombinedChart()}
             </View>
 
             {/* Patterns Section */}
