@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Stack, router } from 'expo-router';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon } from 'lucide-react-native';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon } from 'lucide-react-native';
 import * as React from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -85,6 +85,14 @@ export default function HomeScreen() {
           title: 'Life Events Tracker',
           headerRight: () => (
             <View className="flex-row gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="rounded-full"
+                onPress={() => router.push('/dashboard' as any)}
+              >
+                <Icon as={BarChart3Icon} className="size-5" />
+              </Button>
               <Button
                 size="icon"
                 variant="ghost"
