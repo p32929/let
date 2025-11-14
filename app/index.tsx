@@ -11,10 +11,12 @@ import { useEventsStore } from '@/lib/stores/events-store';
 import { getWeekDays, formatDate, isToday, getNextWeek, getPreviousWeek, getDayName } from '@/lib/date-utils';
 import { migrateDatabase } from '@/db/migrate';
 import { EventTracker } from '@/components/event-tracker';
+import { addSampleData } from '@/lib/sample-data';
 
 export default function HomeScreen() {
   const [currentWeekDate, setCurrentWeekDate] = React.useState(new Date());
   const [selectedDate, setSelectedDate] = React.useState(new Date());
+  const [loadingSampleData, setLoadingSampleData] = React.useState(false);
   const { events, loadEvents, isLoading } = useEventsStore();
 
   // Animated values for swipe gestures
@@ -46,6 +48,18 @@ export default function HomeScreen() {
 
   const handleDaySelect = (date: Date) => {
     setSelectedDate(date);
+  };
+
+  const handleLoadSampleData = async () => {
+    try {
+      setLoadingSampleData(true);
+      await addSampleData();
+      await loadEvents();
+    } catch (error) {
+      console.error('Failed to load sample data:', error);
+    } finally {
+      setLoadingSampleData(false);
+    }
   };
 
   // Swipe gesture for week navigation
@@ -180,11 +194,14 @@ export default function HomeScreen() {
                 <Text className="text-muted-foreground">Loading events...</Text>
               </View>
             ) : events.length === 0 ? (
-              <View className="items-center justify-center py-12">
+              <View className="items-center justify-center py-12 gap-4">
                 <Text className="text-center text-muted-foreground mb-2">No events yet</Text>
                 <Text className="text-center text-sm text-muted-foreground">
                   Tap the + button to create your first event
                 </Text>
+                <Button onPress={handleLoadSampleData} disabled={loadingSampleData} className="mt-4">
+                  <Text>{loadingSampleData ? 'Loading...' : 'Load Sample Data'}</Text>
+                </Button>
               </View>
             ) : (
               <View className="gap-3">

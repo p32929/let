@@ -113,7 +113,12 @@ class WebDatabase {
   }
 
   async getEventValuesForDate(date: string): Promise<EventValue[]> {
+    if (date === '') return this.eventValues; // Return all if empty string
     return this.eventValues.filter(v => v.date === date);
+  }
+
+  async getAllEventValues(): Promise<EventValue[]> {
+    return [...this.eventValues];
   }
 
   async deleteEventValue(eventId: number, date: string): Promise<void> {
