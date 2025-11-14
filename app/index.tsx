@@ -17,6 +17,8 @@ export default function HomeScreen() {
   const [currentWeekDate, setCurrentWeekDate] = React.useState(new Date());
   const [selectedDate, setSelectedDate] = React.useState(new Date());
   const [loadingSampleData, setLoadingSampleData] = React.useState(false);
+  const [loadingProgress, setLoadingProgress] = React.useState(0);
+  const [loadingMessage, setLoadingMessage] = React.useState('');
   const [showSampleDataPrompt, setShowSampleDataPrompt] = React.useState(false);
   const { events, loadEvents, isLoading } = useEventsStore();
 
@@ -67,14 +69,25 @@ export default function HomeScreen() {
   const handleLoadSampleData = async () => {
     try {
       setLoadingSampleData(true);
+      setLoadingProgress(0);
+      setLoadingMessage('Starting...');
       setShowSampleDataPrompt(false);
-      await addSampleData();
+
+      await addSampleData((progress, message) => {
+        setLoadingProgress(progress);
+        setLoadingMessage(message);
+      });
+
+      setLoadingMessage('Loading events...');
       await loadEvents();
       localStorage.setItem('life-events-tracker-initialized', 'true');
     } catch (error) {
       console.error('Failed to load sample data:', error);
+      setLoadingMessage('Error loading sample data');
     } finally {
       setLoadingSampleData(false);
+      setLoadingProgress(0);
+      setLoadingMessage('');
     }
   };
 
@@ -238,8 +251,8 @@ export default function HomeScreen() {
           <View className="bg-card border border-border rounded-lg p-6 max-w-md w-full">
             <Text className="text-xl font-bold mb-2">Welcome! 👋</Text>
             <Text className="text-muted-foreground mb-4">
-              Would you like to load sample data to see how the app works? This will create 4
-              events with 30 days of tracking data to demonstrate pattern insights.
+              Would you like to load sample data to see how the app works? This will create 10
+              events with 2 years of tracking data to demonstrate pattern insights.
             </Text>
             <View className="flex-row gap-3">
               <Button
@@ -253,6 +266,38 @@ export default function HomeScreen() {
                 <Text>{loadingSampleData ? 'Loading...' : 'Yes, Load Sample'}</Text>
               </Button>
             </View>
+          </View>
+        </View>
+      )}
+
+      {/* Loading Progress Overlay */}
+      {loadingSampleData && (
+        <View className="absolute inset-0 bg-black/70 items-center justify-center p-4">
+          <View className="bg-card border border-border rounded-lg p-6 max-w-md w-full">
+            <Text className="text-xl font-bold mb-4 text-center">Loading Sample Data</Text>
+
+            {/* Progress Bar */}
+            <View className="mb-4">
+              <View className="h-3 bg-muted rounded-full overflow-hidden">
+                <View
+                  className="h-full bg-primary transition-all duration-300"
+                  style={{ width: `${loadingProgress}%` }}
+                />
+              </View>
+            </View>
+
+            {/* Progress Text */}
+            <Text className="text-center text-muted-foreground mb-2">
+              {loadingProgress}% Complete
+            </Text>
+            <Text className="text-center text-sm text-muted-foreground">
+              {loadingMessage}
+            </Text>
+
+            {/* Additional Info */}
+            <Text className="text-xs text-muted-foreground text-center mt-4">
+              This may take a minute... Generating 7,300 data points
+            </Text>
           </View>
         </View>
       )}

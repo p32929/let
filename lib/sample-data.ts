@@ -1,8 +1,10 @@
 import { webDb } from '@/db/client.web';
 import { format, subDays } from 'date-fns';
 
-export async function addSampleData() {
+export async function addSampleData(onProgress?: (progress: number, message: string) => void) {
   console.log('Adding sample data...');
+
+  if (onProgress) onProgress(0, 'Creating events...');
 
   // Create sample events with more variety
   const sampleEvents = [
@@ -83,13 +85,26 @@ export async function addSampleData() {
   }
 
   console.log(`Created ${insertedEvents.length} events`);
+  if (onProgress) onProgress(10, `Created ${insertedEvents.length} events`);
 
   // Generate sample data for the last 2 years (730 days)
   const today = new Date();
   let dataPointCount = 0;
+  const totalDays = 730;
+  const batchSize = 50; // Process 50 days at a time for better UX
 
-  for (let i = 0; i < 730; i++) {
+  for (let i = 0; i < totalDays; i++) {
     const date = format(subDays(today, i), 'yyyy-MM-dd');
+
+    // Update progress every batch
+    if (i % batchSize === 0) {
+      const progress = 10 + Math.floor((i / totalDays) * 80);
+      const daysProcessed = i;
+      const message = `Generating data: ${daysProcessed}/${totalDays} days...`;
+      if (onProgress) onProgress(progress, message);
+      // Allow UI to update
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
 
     // Add some seasonal variation
     const seasonalFactor = Math.sin((i / 365) * Math.PI * 2) * 0.5 + 0.5; // 0-1 range
@@ -166,6 +181,8 @@ export async function addSampleData() {
 
   console.log(`Added ${dataPointCount} data points`);
   console.log('Sample data added successfully!');
+
+  if (onProgress) onProgress(100, 'Sample data loaded successfully!');
 
   return {
     eventsCreated: insertedEvents.length,
