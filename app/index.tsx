@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Stack, router } from 'expo-router';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon } from 'lucide-react-native';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircle2Icon, CircleIcon } from 'lucide-react-native';
 import * as React from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -12,6 +12,7 @@ import { getWeekDays, formatDate, isToday, getNextWeek, getPreviousWeek, getDayN
 import { migrateDatabase } from '@/db/migrate';
 import { EventTracker } from '@/components/event-tracker';
 import { addSampleData } from '@/lib/sample-data';
+import { getEventValuesForDateRange } from '@/db/operations/events';
 
 export default function HomeScreen() {
   const [currentWeekDate, setCurrentWeekDate] = React.useState(new Date());
@@ -20,6 +21,8 @@ export default function HomeScreen() {
   const [loadingProgress, setLoadingProgress] = React.useState(0);
   const [loadingMessage, setLoadingMessage] = React.useState('');
   const [showSampleDataPrompt, setShowSampleDataPrompt] = React.useState(false);
+  const [showMenu, setShowMenu] = React.useState(false);
+  const [weekEventCompletion, setWeekEventCompletion] = React.useState<Record<string, { total: number; completed: number }>>({});
   const { events, loadEvents, isLoading } = useEventsStore();
 
   // Animated values for swipe gestures
@@ -53,6 +56,43 @@ export default function HomeScreen() {
   }, [events.length, isLoading]);
 
   const weekDays = React.useMemo(() => getWeekDays(currentWeekDate), [currentWeekDate]);
+
+  // Load event completion for each day of the week
+  React.useEffect(() => {
+    const loadWeekCompletion = async () => {
+      if (events.length === 0) {
+        setWeekEventCompletion({});
+        return;
+      }
+
+      const completion: Record<string, { total: number; completed: number }> = {};
+
+      for (const day of weekDays) {
+        const dateStr = formatDate(day);
+        let completed = 0;
+
+        for (const event of events) {
+          const values = await getEventValuesForDateRange(event.id, dateStr, dateStr);
+          if (values.length > 0 && values[0].value) {
+            // Count as completed if has any value (for booleans, strings, or numbers)
+            if (event.type === 'boolean') {
+              if (values[0].value === 'true') completed++;
+            } else if (event.type === 'number') {
+              if (values[0].value && parseFloat(values[0].value) > 0) completed++;
+            } else {
+              if (values[0].value.trim() !== '') completed++;
+            }
+          }
+        }
+
+        completion[dateStr] = { total: events.length, completed };
+      }
+
+      setWeekEventCompletion(completion);
+    };
+
+    loadWeekCompletion();
+  }, [weekDays, events]);
 
   const handlePreviousWeek = () => {
     setCurrentWeekDate(getPreviousWeek(currentWeekDate));
@@ -137,21 +177,13 @@ export default function HomeScreen() {
                 size="icon"
                 variant="ghost"
                 className="rounded-full"
-                onPress={() => router.push('/dashboard' as any)}
+                onPress={() => setShowMenu(!showMenu)}
               >
-                <Icon as={BarChart3Icon} className="size-5" />
+                <Icon as={MoreVerticalIcon} className="size-5" />
               </Button>
               <Button
                 size="icon"
-                variant="ghost"
-                className="rounded-full"
-                onPress={() => router.push('/reorder-events' as any)}
-              >
-                <Icon as={ArrowUpDownIcon} className="size-5" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
+                variant="default"
                 className="rounded-full"
                 onPress={() => router.push('/add-event')}
               >
@@ -192,12 +224,15 @@ export default function HomeScreen() {
               {weekDays.map((day) => {
                 const selected = formatDate(day) === formatDate(selectedDate);
                 const today = isToday(day);
+                const dateStr = formatDate(day);
+                const completion = weekEventCompletion[dateStr];
+                const completionPercent = completion ? (completion.completed / completion.total) * 100 : 0;
 
                 return (
                   <Pressable
                     key={formatDate(day)}
                     onPress={() => handleDaySelect(day)}
-                    className={`items-center justify-center rounded-lg p-2 flex-1 mx-0.5 ${
+                    className={`items-center justify-center rounded-lg p-2 flex-1 mx-0.5 relative ${
                       selected ? 'bg-primary' : today ? 'bg-muted' : ''
                     }`}
                   >
@@ -215,6 +250,32 @@ export default function HomeScreen() {
                     >
                       {formatDate(day, 'd')}
                     </Text>
+                    {/* Completion indicator */}
+                    {completion && completion.total > 0 && (
+                      <View className="mt-1 flex-row items-center gap-0.5">
+                        {completionPercent === 100 ? (
+                          <Icon
+                            as={CheckCircle2Icon}
+                            className={`size-3 ${selected ? 'text-primary-foreground' : 'text-green-500'}`}
+                          />
+                        ) : completionPercent > 0 ? (
+                          <View className="flex-row items-center">
+                            <Icon
+                              as={CircleIcon}
+                              className={`size-2 ${selected ? 'text-primary-foreground' : 'text-yellow-500'}`}
+                            />
+                            <Text className={`text-[10px] ml-0.5 ${selected ? 'text-primary-foreground' : 'text-muted-foreground'}`}>
+                              {completion.completed}/{completion.total}
+                            </Text>
+                          </View>
+                        ) : (
+                          <Icon
+                            as={CircleIcon}
+                            className={`size-2 ${selected ? 'text-primary-foreground/50' : 'text-muted-foreground/50'}`}
+                          />
+                        )}
+                      </View>
+                    )}
                   </Pressable>
                 );
               })}
@@ -244,6 +305,37 @@ export default function HomeScreen() {
           </ScrollView>
         </Animated.View>
       </GestureDetector>
+
+      {/* Popup Menu */}
+      {showMenu && (
+        <Pressable
+          className="absolute inset-0 bg-transparent"
+          onPress={() => setShowMenu(false)}
+        >
+          <View className="absolute top-14 right-4 bg-card border border-border rounded-lg shadow-lg min-w-[200px] overflow-hidden">
+            <Pressable
+              className="flex-row items-center px-4 py-3 border-b border-border active:bg-muted"
+              onPress={() => {
+                setShowMenu(false);
+                router.push('/dashboard' as any);
+              }}
+            >
+              <Icon as={BarChart3Icon} className="size-5 mr-3 text-foreground" />
+              <Text className="text-base">Dashboard</Text>
+            </Pressable>
+            <Pressable
+              className="flex-row items-center px-4 py-3 active:bg-muted"
+              onPress={() => {
+                setShowMenu(false);
+                router.push('/reorder-events' as any);
+              }}
+            >
+              <Icon as={ArrowUpDownIcon} className="size-5 mr-3 text-foreground" />
+              <Text className="text-base">Reorder Events</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      )}
 
       {/* Sample Data Prompt Dialog */}
       {showSampleDataPrompt && (
