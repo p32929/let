@@ -1,4 +1,5 @@
 import { Text } from '@/components/ui/text';
+import { Button } from '@/components/ui/button';
 import { Stack } from 'expo-router';
 import * as React from 'react';
 import { View, ScrollView, Dimensions } from 'react-native';
@@ -22,18 +23,31 @@ interface Pattern {
   events: Event[];
 }
 
+type TimeRange = '7d' | '30d' | '90d' | '365d';
+
 export default function DashboardScreen() {
   const { events } = useEventsStore();
   const [patterns, setPatterns] = React.useState<Pattern[]>([]);
   const [eventData, setEventData] = React.useState<{ event: Event; dataPoints: EventDataPoint[] }[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [timeRange, setTimeRange] = React.useState<TimeRange>('30d');
+
+  const getDaysForRange = (range: TimeRange): number => {
+    switch (range) {
+      case '7d': return 7;
+      case '30d': return 30;
+      case '90d': return 90;
+      case '365d': return 365;
+    }
+  };
 
   React.useEffect(() => {
     const analyzePatterns = async () => {
       setIsLoading(true);
       try {
         const endDate = new Date();
-        const startDate = subDays(endDate, 30);
+        const days = getDaysForRange(timeRange);
+        const startDate = subDays(endDate, days);
         const startStr = format(startDate, 'yyyy-MM-dd');
         const endStr = format(endDate, 'yyyy-MM-dd');
 
@@ -63,7 +77,7 @@ export default function DashboardScreen() {
     } else {
       setIsLoading(false);
     }
-  }, [events]);
+  }, [events, timeRange]);
 
   const discoverPatterns = (
     allData: { event: Event; dataPoints: EventDataPoint[] }[]
@@ -266,53 +280,63 @@ export default function DashboardScreen() {
       return dataPoint;
     });
 
+    // Calculate chart width based on number of data points for scrolling
+    const dataPointsCount = chartData.length;
+    const minChartWidth = screenWidth - 64; // Account for padding
+    const chartWidth = Math.max(minChartWidth, dataPointsCount * 3); // 3px per data point minimum
+
     return (
       <View className="bg-card border border-border rounded-lg p-4 mb-4">
         <Text className="font-semibold text-lg mb-2">All Events Combined</Text>
         <Text className="text-sm text-muted-foreground mb-4">
-          Normalized view to see patterns (last 30 days)
+          Normalized view to see patterns (scrollable)
         </Text>
 
-        <View style={{ width: '100%', height: 300 }}>
-          <ResponsiveContainer>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-              <XAxis
-                dataKey="date"
-                stroke="#999"
-                tick={{ fill: '#999', fontSize: 12 }}
-              />
-              <YAxis
-                stroke="#999"
-                tick={{ fill: '#999', fontSize: 12 }}
-                label={{ value: 'Normalized %', angle: -90, position: 'insideLeft', fill: '#999' }}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#1a1a1a',
-                  border: '1px solid #333',
-                  borderRadius: 8,
-                }}
-                labelStyle={{ color: '#999' }}
-                itemStyle={{ color: '#fff' }}
-              />
-              <Legend wrapperStyle={{ color: '#999' }} />
-              {numericEvents.map(({ event }) => (
-                <Line
-                  key={event.id}
-                  type="monotone"
-                  dataKey={event.name}
-                  stroke={event.color}
-                  strokeWidth={2}
-                  dot={false}
+        <ScrollView horizontal showsHorizontalScrollIndicator={true} className="mb-2">
+          <View style={{ width: chartWidth, height: 300 }}>
+            <ResponsiveContainer width={chartWidth} height={300}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                <XAxis
+                  dataKey="date"
+                  stroke="#999"
+                  tick={{ fill: '#999', fontSize: 10 }}
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
                 />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </View>
+                <YAxis
+                  stroke="#999"
+                  tick={{ fill: '#999', fontSize: 12 }}
+                  label={{ value: 'Normalized %', angle: -90, position: 'insideLeft', fill: '#999' }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#1a1a1a',
+                    border: '1px solid #333',
+                    borderRadius: 8,
+                  }}
+                  labelStyle={{ color: '#999' }}
+                  itemStyle={{ color: '#fff' }}
+                />
+                <Legend wrapperStyle={{ color: '#999' }} />
+                {numericEvents.map(({ event }) => (
+                  <Line
+                    key={event.id}
+                    type="monotone"
+                    dataKey={event.name}
+                    stroke={event.color}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </View>
+        </ScrollView>
 
         <Text className="text-xs text-muted-foreground mt-3">
-          * Values normalized to 0-100% scale for visual comparison. Hover over the chart to see details!
+          * Values normalized to 0-100% scale for visual comparison. Scroll horizontally to see all data points!
         </Text>
       </View>
     );
@@ -348,10 +372,51 @@ export default function DashboardScreen() {
           </View>
         ) : (
           <View>
-            {/* Combined Chart */}
+            {/* Time Range Selector */}
             <View className="mb-6">
-              <Text className="text-2xl font-bold mb-1">📊 Trends</Text>
-              <Text className="text-muted-foreground mb-4">Last 30 days of data</Text>
+              <Text className="text-2xl font-bold mb-3">📊 Trends</Text>
+              <View className="flex-row gap-2 mb-4">
+                <Button
+                  variant={timeRange === '7d' ? 'default' : 'outline'}
+                  size="sm"
+                  onPress={() => setTimeRange('7d')}
+                  className="flex-1"
+                >
+                  <Text className={timeRange === '7d' ? 'text-primary-foreground' : ''}>
+                    7 Days
+                  </Text>
+                </Button>
+                <Button
+                  variant={timeRange === '30d' ? 'default' : 'outline'}
+                  size="sm"
+                  onPress={() => setTimeRange('30d')}
+                  className="flex-1"
+                >
+                  <Text className={timeRange === '30d' ? 'text-primary-foreground' : ''}>
+                    30 Days
+                  </Text>
+                </Button>
+                <Button
+                  variant={timeRange === '90d' ? 'default' : 'outline'}
+                  size="sm"
+                  onPress={() => setTimeRange('90d')}
+                  className="flex-1"
+                >
+                  <Text className={timeRange === '90d' ? 'text-primary-foreground' : ''}>
+                    90 Days
+                  </Text>
+                </Button>
+                <Button
+                  variant={timeRange === '365d' ? 'default' : 'outline'}
+                  size="sm"
+                  onPress={() => setTimeRange('365d')}
+                  className="flex-1"
+                >
+                  <Text className={timeRange === '365d' ? 'text-primary-foreground' : ''}>
+                    1 Year
+                  </Text>
+                </Button>
+              </View>
               {renderCombinedChart()}
             </View>
 
