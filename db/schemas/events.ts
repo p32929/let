@@ -5,7 +5,7 @@ export const events = sqliteTable('events', {
   name: text('name').notNull(),
   type: text('type', { enum: ['boolean', 'number', 'string'] }).notNull(),
   unit: text('unit'),
-  color: text('color').default('#3b82f6'),
+  color: text('color').notNull().default('#3b82f6'),
   icon: text('icon'),
   order: integer('order').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp' })

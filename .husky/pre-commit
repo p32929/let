@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Run TypeScript type checking
+echo "🔍 Running TypeScript type check..."
+npm run typecheck
+
+# If typecheck fails, prevent commit
+if [ $? -ne 0 ]; then
+  echo "❌ TypeScript errors found. Please fix them before committing."
+  exit 1
+fi
+
+echo "✅ TypeScript check passed!"
