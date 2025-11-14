@@ -2,9 +2,11 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Stack, router } from 'expo-router';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from 'lucide-react-native';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon } from 'lucide-react-native';
 import * as React from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
+import { GestureDetector, Gesture } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getWeekDays, formatDate, isToday, getNextWeek, getPreviousWeek, getDayName } from '@/lib/date-utils';
 import { migrateDatabase } from '@/db/migrate';
@@ -14,6 +16,10 @@ export default function HomeScreen() {
   const [currentWeekDate, setCurrentWeekDate] = React.useState(new Date());
   const [selectedDate, setSelectedDate] = React.useState(new Date());
   const { events, loadEvents, isLoading } = useEventsStore();
+
+  // Animated values for swipe gestures
+  const translateX = useSharedValue(0);
+  const opacity = useSharedValue(1);
 
   React.useEffect(() => {
     // Initialize database and load events
@@ -42,104 +48,146 @@ export default function HomeScreen() {
     setSelectedDate(date);
   };
 
+  // Swipe gesture for week navigation
+  const panGesture = Gesture.Pan()
+    .onUpdate((event) => {
+      translateX.value = event.translationX;
+      // Reduce opacity as user swipes
+      opacity.value = 1 - Math.abs(event.translationX) / 400;
+    })
+    .onEnd((event) => {
+      const threshold = 50; // Minimum swipe distance
+
+      if (event.translationX > threshold) {
+        // Swipe right - go to previous week
+        runOnJS(handlePreviousWeek)();
+      } else if (event.translationX < -threshold) {
+        // Swipe left - go to next week
+        runOnJS(handleNextWeek)();
+      }
+
+      // Reset animation
+      translateX.value = withSpring(0);
+      opacity.value = withSpring(1);
+    });
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateX: translateX.value }],
+      opacity: opacity.value,
+    };
+  });
+
   return (
     <>
       <Stack.Screen
         options={{
           title: 'Life Events Tracker',
           headerRight: () => (
-            <Button
-              size="icon"
-              variant="ghost"
-              className="rounded-full"
-              onPress={() => router.push('/add-event')}
-            >
-              <Icon as={PlusIcon} className="size-5" />
-            </Button>
+            <View className="flex-row gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="rounded-full"
+                onPress={() => router.push('/reorder-events' as any)}
+              >
+                <Icon as={ArrowUpDownIcon} className="size-5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="rounded-full"
+                onPress={() => router.push('/add-event')}
+              >
+                <Icon as={PlusIcon} className="size-5" />
+              </Button>
+            </View>
           ),
         }}
       />
-      <View className="flex-1 bg-background">
-        {/* Week Navigation */}
-        <View className="border-b border-border p-4">
-          <View className="flex-row items-center justify-between mb-4">
-            <Button
-              size="icon"
-              variant="ghost"
-              onPress={handlePreviousWeek}
-              className="rounded-full"
-            >
-              <Icon as={ChevronLeftIcon} className="size-5" />
-            </Button>
-            <Text className="text-lg font-semibold">
-              {formatDate(weekDays[0], 'MMM d')} - {formatDate(weekDays[6], 'MMM d, yyyy')}
-            </Text>
-            <Button
-              size="icon"
-              variant="ghost"
-              onPress={handleNextWeek}
-              className="rounded-full"
-            >
-              <Icon as={ChevronRightIcon} className="size-5" />
-            </Button>
-          </View>
-
-          {/* Week Days */}
-          <View className="flex-row justify-between">
-            {weekDays.map((day) => {
-              const selected = formatDate(day) === formatDate(selectedDate);
-              const today = isToday(day);
-
-              return (
-                <Pressable
-                  key={formatDate(day)}
-                  onPress={() => handleDaySelect(day)}
-                  className={`items-center justify-center rounded-lg p-2 flex-1 mx-0.5 ${
-                    selected ? 'bg-primary' : today ? 'bg-muted' : ''
-                  }`}
-                >
-                  <Text
-                    className={`text-xs ${
-                      selected ? 'text-primary-foreground' : 'text-muted-foreground'
-                    }`}
-                  >
-                    {getDayName(day)}
-                  </Text>
-                  <Text
-                    className={`text-lg font-semibold ${
-                      selected ? 'text-primary-foreground' : today ? 'text-foreground' : 'text-foreground'
-                    }`}
-                  >
-                    {formatDate(day, 'd')}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Events List */}
-        <ScrollView className="flex-1 p-4">
-          {isLoading ? (
-            <View className="items-center justify-center py-8">
-              <Text className="text-muted-foreground">Loading events...</Text>
-            </View>
-          ) : events.length === 0 ? (
-            <View className="items-center justify-center py-12">
-              <Text className="text-center text-muted-foreground mb-2">No events yet</Text>
-              <Text className="text-center text-sm text-muted-foreground">
-                Tap the + button to create your first event
+      <GestureDetector gesture={panGesture}>
+        <Animated.View style={[{ flex: 1 }, animatedStyle]} className="bg-background">
+          {/* Week Navigation */}
+          <View className="border-b border-border p-4">
+            <View className="flex-row items-center justify-between mb-4">
+              <Button
+                size="icon"
+                variant="ghost"
+                onPress={handlePreviousWeek}
+                className="rounded-full"
+              >
+                <Icon as={ChevronLeftIcon} className="size-5" />
+              </Button>
+              <Text className="text-lg font-semibold">
+                {formatDate(weekDays[0], 'MMM d')} - {formatDate(weekDays[6], 'MMM d, yyyy')}
               </Text>
+              <Button
+                size="icon"
+                variant="ghost"
+                onPress={handleNextWeek}
+                className="rounded-full"
+              >
+                <Icon as={ChevronRightIcon} className="size-5" />
+              </Button>
             </View>
-          ) : (
-            <View className="gap-3">
-              {events.map((event) => (
-                <EventTracker key={event.id} event={event} date={selectedDate} />
-              ))}
+
+            {/* Week Days */}
+            <View className="flex-row justify-between">
+              {weekDays.map((day) => {
+                const selected = formatDate(day) === formatDate(selectedDate);
+                const today = isToday(day);
+
+                return (
+                  <Pressable
+                    key={formatDate(day)}
+                    onPress={() => handleDaySelect(day)}
+                    className={`items-center justify-center rounded-lg p-2 flex-1 mx-0.5 ${
+                      selected ? 'bg-primary' : today ? 'bg-muted' : ''
+                    }`}
+                  >
+                    <Text
+                      className={`text-xs ${
+                        selected ? 'text-primary-foreground' : 'text-muted-foreground'
+                      }`}
+                    >
+                      {getDayName(day)}
+                    </Text>
+                    <Text
+                      className={`text-lg font-semibold ${
+                        selected ? 'text-primary-foreground' : today ? 'text-foreground' : 'text-foreground'
+                      }`}
+                    >
+                      {formatDate(day, 'd')}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
-          )}
-        </ScrollView>
-      </View>
+          </View>
+
+          {/* Events List */}
+          <ScrollView className="flex-1 p-4">
+            {isLoading ? (
+              <View className="items-center justify-center py-8">
+                <Text className="text-muted-foreground">Loading events...</Text>
+              </View>
+            ) : events.length === 0 ? (
+              <View className="items-center justify-center py-12">
+                <Text className="text-center text-muted-foreground mb-2">No events yet</Text>
+                <Text className="text-center text-sm text-muted-foreground">
+                  Tap the + button to create your first event
+                </Text>
+              </View>
+            ) : (
+              <View className="gap-3">
+                {events.map((event) => (
+                  <EventTracker key={event.id} event={event} date={selectedDate} />
+                ))}
+              </View>
+            )}
+          </ScrollView>
+        </Animated.View>
+      </GestureDetector>
     </>
   );
 }

@@ -5,10 +5,11 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
-import { MinusIcon, PlusIcon } from 'lucide-react-native';
+import { MinusIcon, PlusIcon, Settings2Icon } from 'lucide-react-native';
 import type { Event } from '@/types/events';
 import { getEventValue, setEventValue } from '@/db/operations/events';
 import { formatDate } from '@/lib/date-utils';
+import { router } from 'expo-router';
 
 interface EventTrackerProps {
   event: Event;
@@ -111,6 +112,14 @@ export function EventTracker({ event, date }: EventTrackerProps) {
             </Text>
           )}
         </View>
+        <Button
+          size="icon"
+          variant="ghost"
+          onPress={() => router.push({ pathname: '/edit-event' as any, params: { id: event.id.toString() } })}
+          className="ml-2"
+        >
+          <Icon as={Settings2Icon} className="size-4 text-muted-foreground" />
+        </Button>
       </View>
 
       {/* Boolean Widget */}
