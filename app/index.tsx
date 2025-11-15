@@ -16,6 +16,7 @@ import { addSampleData } from '@/lib/sample-data';
 import { getEventValuesForDateRange } from '@/db/operations/events';
 import { exportData, importData, downloadExportFile, readImportFile } from '@/lib/import-export';
 import { webDb } from '@/db/client.web';
+import { Calendar } from '@/components/ui/calendar';
 
 export default function HomeScreen() {
   const [currentWeekDate, setCurrentWeekDate] = React.useState(new Date());
@@ -24,6 +25,7 @@ export default function HomeScreen() {
   const [loadingProgress, setLoadingProgress] = React.useState(0);
   const [loadingMessage, setLoadingMessage] = React.useState('');
   const [showMenu, setShowMenu] = React.useState(false);
+  const [showCalendar, setShowCalendar] = React.useState(false);
   const [showImportDialog, setShowImportDialog] = React.useState(false);
   const [showResetDialog, setShowResetDialog] = React.useState(false);
   const [importingData, setImportingData] = React.useState(false);
@@ -191,38 +193,10 @@ export default function HomeScreen() {
     setShowImportDialog(true);
   };
 
-  const handleDateSelect = (dateString: string) => {
-    const selectedDate = new Date(dateString);
-    setCurrentWeekDate(selectedDate);
-    setSelectedDate(selectedDate);
-  };
-
-  const handleOpenDatePicker = () => {
-    // @ts-ignore - web only
-    if (typeof document !== 'undefined') {
-      const input = document.createElement('input');
-      input.type = 'date';
-      input.value = formatDate(currentWeekDate, 'yyyy-MM-dd');
-      input.style.position = 'absolute';
-      input.style.opacity = '0';
-      input.style.pointerEvents = 'none';
-
-      input.onchange = (e: any) => {
-        handleDateSelect(e.target.value);
-        document.body.removeChild(input);
-      };
-
-      input.onblur = () => {
-        setTimeout(() => {
-          if (document.body.contains(input)) {
-            document.body.removeChild(input);
-          }
-        }, 100);
-      };
-
-      document.body.appendChild(input);
-      input.showPicker();
-    }
+  const handleCalendarDateSelect = (date: Date) => {
+    setCurrentWeekDate(date);
+    setSelectedDate(date);
+    setShowCalendar(false);
   };
 
   // Swipe gesture for week navigation
@@ -296,7 +270,7 @@ export default function HomeScreen() {
                 <Icon as={ChevronLeftIcon} className="size-5" />
               </Button>
               <Pressable
-                onPress={handleOpenDatePicker}
+                onPress={() => setShowCalendar(true)}
                 className="flex-1 items-center"
               >
                 <Text className="text-lg font-semibold">
@@ -513,6 +487,21 @@ export default function HomeScreen() {
               This may take a minute... Generating 7,300 data points
             </Text>
           </View>
+        </View>
+      )}
+
+      {/* Calendar Dialog */}
+      {showCalendar && (
+        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
+          <Pressable
+            className="absolute inset-0 bg-transparent"
+            onPress={() => setShowCalendar(false)}
+          />
+          <Calendar
+            selectedDate={selectedDate}
+            onSelectDate={handleCalendarDateSelect}
+            onClose={() => setShowCalendar(false)}
+          />
         </View>
       )}
 
