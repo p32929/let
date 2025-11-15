@@ -823,44 +823,66 @@ export default function DashboardScreen() {
                   Based on your tracked data
                 </Text>
 
-                {patterns.map((pattern, index) => (
-                  <View
-                    key={index}
-                    className="bg-card border border-border rounded-lg p-4 mb-3"
-                  >
-                    {/* Event indicators - wrapping layout */}
-                    <View className="flex-row flex-wrap items-center mb-3">
-                      {pattern.events.map((event, i) => (
-                        <View key={event.id} className="flex-row items-center mb-1">
-                          {i > 0 && <Text className="mx-1 text-muted-foreground text-sm">→</Text>}
+                {patterns.map((pattern, index) => {
+                  // Create a map of event names to colors for quick lookup
+                  const eventColorMap: Record<string, string> = {};
+                  pattern.events.forEach(event => {
+                    eventColorMap[event.name] = event.color;
+                  });
+
+                  // Split description by arrows and render each part with color indicator
+                  const renderColoredDescription = () => {
+                    const parts = pattern.description.split(' → ');
+                    return parts.map((part, i) => {
+                      // Find which event this part belongs to
+                      let eventColor = '#999';
+                      for (const event of pattern.events) {
+                        if (part.includes(event.name)) {
+                          eventColor = event.color;
+                          break;
+                        }
+                      }
+
+                      return (
+                        <View key={i} className="flex-row items-center flex-wrap">
+                          {i > 0 && <Text className="text-muted-foreground mx-1">→</Text>}
                           <View
-                            className="w-3 h-3 rounded-full mr-1"
-                            style={{ backgroundColor: event.color }}
+                            className="w-2 h-2 rounded-full mr-1"
+                            style={{ backgroundColor: eventColor }}
                           />
-                          <Text className="font-semibold text-sm mr-1">{event.name}</Text>
+                          <Text className="text-base">{part.trim()}</Text>
                         </View>
-                      ))}
-                    </View>
+                      );
+                    });
+                  };
 
-                    {/* Pattern description */}
-                    <Text className="text-base mb-3">{pattern.description}</Text>
+                  return (
+                    <View
+                      key={index}
+                      className="bg-card border border-border rounded-lg p-4 mb-3"
+                    >
+                      {/* Pattern description with inline colors */}
+                      <View className="flex-row flex-wrap items-center mb-3">
+                        {renderColoredDescription()}
+                      </View>
 
-                    {/* Confidence indicator */}
-                    <View className="flex-row items-center justify-between">
-                      <View className="flex-row items-center">
-                        <Text className="text-xs text-muted-foreground mr-2">
-                          {getConfidenceLabel(pattern.confidence)}
-                        </Text>
-                        <Text className={`text-xs font-semibold ${getConfidenceColor(pattern.confidence)}`}>
-                          {pattern.confidence}%
+                      {/* Confidence indicator */}
+                      <View className="flex-row items-center justify-between">
+                        <View className="flex-row items-center">
+                          <Text className="text-xs text-muted-foreground mr-2">
+                            {getConfidenceLabel(pattern.confidence)}
+                          </Text>
+                          <Text className={`text-xs font-semibold ${getConfidenceColor(pattern.confidence)}`}>
+                            {pattern.confidence}%
+                          </Text>
+                        </View>
+                        <Text className="text-xs text-muted-foreground capitalize">
+                          {pattern.type.replace('-', ' ')}
                         </Text>
                       </View>
-                      <Text className="text-xs text-muted-foreground capitalize">
-                        {pattern.type.replace('-', ' ')}
-                      </Text>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             ) : (
               <View className="mb-6">
