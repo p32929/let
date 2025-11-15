@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Stack, router } from 'expo-router';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon } from 'lucide-react-native';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, MonitorIcon } from 'lucide-react-native';
 import * as React from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -13,6 +13,8 @@ import { migrateDatabase } from '@/db/migrate';
 import { EventTracker } from '@/components/event-tracker';
 import { addSampleData } from '@/lib/sample-data';
 import { getEventValuesForDateRange } from '@/db/operations/events';
+import { useThemeStore } from '@/lib/stores/theme-store';
+import { useColorScheme } from 'nativewind';
 
 export default function HomeScreen() {
   const [currentWeekDate, setCurrentWeekDate] = React.useState(new Date());
@@ -24,6 +26,8 @@ export default function HomeScreen() {
   const [showMenu, setShowMenu] = React.useState(false);
   const [weekEventCompletion, setWeekEventCompletion] = React.useState<Record<string, { total: number; completed: number }>>({});
   const { events, loadEvents, isLoading } = useEventsStore();
+  const { themeMode, setThemeMode } = useThemeStore();
+  const { setColorScheme } = useColorScheme();
 
   // Animated values for swipe gestures
   const translateX = useSharedValue(0);
@@ -93,6 +97,21 @@ export default function HomeScreen() {
 
     loadWeekCompletion();
   }, [weekDays, events]);
+
+  // Apply theme based on mode
+  React.useEffect(() => {
+    if (themeMode === 'system') {
+      const systemScheme = window?.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      setColorScheme(systemScheme);
+    } else {
+      setColorScheme(themeMode);
+    }
+  }, [themeMode, setColorScheme]);
+
+  const handleThemeChange = (mode: 'light' | 'dark' | 'system') => {
+    setThemeMode(mode);
+    setShowMenu(false);
+  };
 
   const handlePreviousWeek = () => {
     setCurrentWeekDate(getPreviousWeek(currentWeekDate));
@@ -316,7 +335,7 @@ export default function HomeScreen() {
               <Text className="text-base">Dashboard</Text>
             </Pressable>
             <Pressable
-              className="flex-row items-center px-4 py-3 active:bg-muted"
+              className="flex-row items-center px-4 py-3 border-b border-border active:bg-muted"
               onPress={() => {
                 setShowMenu(false);
                 router.push('/reorder-events' as any);
@@ -325,6 +344,37 @@ export default function HomeScreen() {
               <Icon as={ArrowUpDownIcon} className="size-5 mr-3 text-foreground" />
               <Text className="text-base">Reorder Events</Text>
             </Pressable>
+
+            {/* Theme Options */}
+            <View className="px-3 py-2">
+              <Text className="text-xs font-semibold text-muted-foreground mb-2 px-1">Theme</Text>
+              <View className="gap-1">
+                <Pressable
+                  className={`flex-row items-center px-3 py-2 rounded-lg active:bg-muted ${themeMode === 'light' ? 'bg-muted' : ''}`}
+                  onPress={() => handleThemeChange('light')}
+                >
+                  <Icon as={SunIcon} className="size-4 mr-3 text-foreground" />
+                  <Text className="text-sm flex-1">Light</Text>
+                  {themeMode === 'light' && <View className="w-2 h-2 rounded-full bg-primary" />}
+                </Pressable>
+                <Pressable
+                  className={`flex-row items-center px-3 py-2 rounded-lg active:bg-muted ${themeMode === 'dark' ? 'bg-muted' : ''}`}
+                  onPress={() => handleThemeChange('dark')}
+                >
+                  <Icon as={MoonIcon} className="size-4 mr-3 text-foreground" />
+                  <Text className="text-sm flex-1">Dark</Text>
+                  {themeMode === 'dark' && <View className="w-2 h-2 rounded-full bg-primary" />}
+                </Pressable>
+                <Pressable
+                  className={`flex-row items-center px-3 py-2 rounded-lg active:bg-muted ${themeMode === 'system' ? 'bg-muted' : ''}`}
+                  onPress={() => handleThemeChange('system')}
+                >
+                  <Icon as={MonitorIcon} className="size-4 mr-3 text-foreground" />
+                  <Text className="text-sm flex-1">System</Text>
+                  {themeMode === 'system' && <View className="w-2 h-2 rounded-full bg-primary" />}
+                </Pressable>
+              </View>
+            </View>
           </View>
         </Pressable>
       )}

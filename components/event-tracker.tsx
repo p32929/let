@@ -105,12 +105,34 @@ export function EventTracker({ event, date }: EventTrackerProps) {
     : value.trim() !== '';
 
   return (
-    <View className="bg-card border border-border rounded-lg p-3 flex-row items-center" style={{ borderLeftWidth: 4, borderLeftColor: event.color }}>
+    <View
+      className="bg-card rounded-xl p-4 flex-row items-center shadow-sm"
+      style={{
+        borderLeftWidth: 4,
+        borderLeftColor: event.color,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 1,
+      }}
+    >
+      {/* Color dot indicator */}
+      <View
+        className="w-3 h-3 rounded-full mr-3"
+        style={{ backgroundColor: event.color }}
+      />
+
       {/* Event Name */}
       <View className="flex-1 mr-3">
-        <Text className="font-semibold text-base">{event.name}</Text>
+        <View className="flex-row items-center gap-2">
+          <Text className="font-semibold text-base">{event.name}</Text>
+          {hasValue && (
+            <View className="w-2 h-2 rounded-full bg-green-500" />
+          )}
+        </View>
         {event.unit && (
-          <Text className="text-xs text-muted-foreground">{event.unit}</Text>
+          <Text className="text-xs text-muted-foreground mt-0.5">{event.unit}</Text>
         )}
       </View>
 
@@ -118,10 +140,15 @@ export function EventTracker({ event, date }: EventTrackerProps) {
       <View className="flex-row items-center gap-2">
         {/* Boolean Widget */}
         {event.type === 'boolean' && (
-          <Switch
-            checked={value === 'true'}
-            onCheckedChange={handleBooleanChange}
-          />
+          <View className="flex-row items-center gap-2">
+            <Text className="text-sm text-muted-foreground">
+              {value === 'true' ? 'Done' : 'Todo'}
+            </Text>
+            <Switch
+              checked={value === 'true'}
+              onCheckedChange={handleBooleanChange}
+            />
+          </View>
         )}
 
         {/* Number Widget */}
@@ -129,25 +156,27 @@ export function EventTracker({ event, date }: EventTrackerProps) {
           <>
             <Button
               size="icon"
-              variant="outline"
+              variant="ghost"
               onPress={handleNumberDecrement}
               disabled={value === '' || Number(value) <= 0}
-              className="h-10 w-10"
+              className="h-9 w-9 rounded-full"
             >
               <Icon as={MinusIcon} className="size-4" />
             </Button>
-            <Input
-              value={value}
-              onChangeText={handleNumberChange}
-              keyboardType="numeric"
-              placeholder="0"
-              className="text-center native:h-10 w-20 text-base font-semibold"
-            />
+            <View className="bg-muted/50 rounded-lg px-3 py-2 min-w-[60px]">
+              <Input
+                value={value}
+                onChangeText={handleNumberChange}
+                keyboardType="numeric"
+                placeholder="0"
+                className="text-center native:h-6 text-base font-bold p-0 bg-transparent border-0"
+              />
+            </View>
             <Button
               size="icon"
-              variant="outline"
+              variant="ghost"
               onPress={handleNumberIncrement}
-              className="h-10 w-10"
+              className="h-9 w-9 rounded-full"
             >
               <Icon as={PlusIcon} className="size-4" />
             </Button>
@@ -159,8 +188,8 @@ export function EventTracker({ event, date }: EventTrackerProps) {
           <Input
             value={value}
             onChangeText={handleTextChange}
-            placeholder="Enter text..."
-            className="native:h-10 w-40 text-sm"
+            placeholder="Add note..."
+            className="native:h-9 w-36 text-sm bg-muted/50 rounded-lg"
           />
         )}
 
@@ -169,7 +198,7 @@ export function EventTracker({ event, date }: EventTrackerProps) {
           size="icon"
           variant="ghost"
           onPress={() => router.push({ pathname: '/edit-event' as any, params: { id: event.id.toString() } })}
-          className="h-10 w-10"
+          className="h-9 w-9 rounded-full"
         >
           <Icon as={Settings2Icon} className="size-4 text-muted-foreground" />
         </Button>
