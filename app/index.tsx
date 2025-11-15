@@ -309,7 +309,7 @@ export default function HomeScreen() {
             className="absolute inset-0 bg-transparent z-40"
             onPress={() => setShowMenu(false)}
           />
-          <View className="absolute top-16 right-4 bg-card border border-border rounded-lg shadow-lg min-w-[200px] overflow-hidden z-50">
+          <View className="absolute right-4 bg-card border border-border rounded-lg shadow-lg min-w-[200px] overflow-hidden z-50" style={{ top: 56 }}>
             <Pressable
               className="flex-row items-center px-4 py-3 border-b border-border active:bg-muted"
               onPress={() => {
