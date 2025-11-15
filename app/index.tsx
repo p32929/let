@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Stack, router } from 'expo-router';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon } from 'lucide-react-native';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon } from 'lucide-react-native';
 import * as React from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -15,6 +15,7 @@ import { EventTracker } from '@/components/event-tracker';
 import { addSampleData } from '@/lib/sample-data';
 import { getEventValuesForDateRange } from '@/db/operations/events';
 import { exportData, importData, downloadExportFile, readImportFile } from '@/lib/import-export';
+import { webDb } from '@/db/client.web';
 
 export default function HomeScreen() {
   const [currentWeekDate, setCurrentWeekDate] = React.useState(new Date());
@@ -22,9 +23,9 @@ export default function HomeScreen() {
   const [loadingSampleData, setLoadingSampleData] = React.useState(false);
   const [loadingProgress, setLoadingProgress] = React.useState(0);
   const [loadingMessage, setLoadingMessage] = React.useState('');
-  const [showSampleDataPrompt, setShowSampleDataPrompt] = React.useState(false);
   const [showMenu, setShowMenu] = React.useState(false);
   const [showImportDialog, setShowImportDialog] = React.useState(false);
+  const [showResetDialog, setShowResetDialog] = React.useState(false);
   const [importingData, setImportingData] = React.useState(false);
   const [importProgress, setImportProgress] = React.useState(0);
   const [importMessage, setImportMessage] = React.useState('');
@@ -49,19 +50,6 @@ export default function HomeScreen() {
     };
     init();
   }, []);
-
-  // Show sample data prompt on first visit
-  React.useEffect(() => {
-    const checkFirstVisit = () => {
-      const hasSeenBefore = localStorage.getItem('life-events-tracker-initialized');
-
-      if (!hasSeenBefore && !isLoading && events.length === 0) {
-        setShowSampleDataPrompt(true);
-      }
-    };
-
-    checkFirstVisit();
-  }, [events.length, isLoading]);
 
   const weekDays = React.useMemo(() => getWeekDays(currentWeekDate), [currentWeekDate]);
 
@@ -116,10 +104,10 @@ export default function HomeScreen() {
 
   const handleLoadSampleData = async () => {
     try {
+      setShowMenu(false);
       setLoadingSampleData(true);
       setLoadingProgress(0);
       setLoadingMessage('Starting...');
-      setShowSampleDataPrompt(false);
 
       await addSampleData((progress, message) => {
         setLoadingProgress(progress);
@@ -128,7 +116,6 @@ export default function HomeScreen() {
 
       setLoadingMessage('Loading events...');
       await loadEvents();
-      localStorage.setItem('life-events-tracker-initialized', 'true');
     } catch (error) {
       console.error('Failed to load sample data:', error);
       setLoadingMessage('Error loading sample data');
@@ -139,9 +126,17 @@ export default function HomeScreen() {
     }
   };
 
-  const handleDismissSampleDataPrompt = () => {
-    setShowSampleDataPrompt(false);
-    localStorage.setItem('life-events-tracker-initialized', 'true');
+  const handleResetAllData = async () => {
+    try {
+      setShowResetDialog(false);
+      const existingEvents = await webDb.getEvents();
+      for (const event of existingEvents) {
+        await webDb.deleteEvent(event.id);
+      }
+      await loadEvents();
+    } catch (error) {
+      console.error('Failed to reset data:', error);
+    }
   };
 
   const handleExportData = async () => {
@@ -393,6 +388,23 @@ export default function HomeScreen() {
               <Text className="text-base text-foreground">Import Data</Text>
             </Pressable>
             <Pressable
+              className="flex-row items-center px-4 py-3 border-b border-border hover:bg-muted/50 active:bg-muted"
+              onPress={handleLoadSampleData}
+            >
+              <Icon as={DatabaseIcon} className="size-5 mr-3 text-foreground" />
+              <Text className="text-base text-foreground">Load Sample Data</Text>
+            </Pressable>
+            <Pressable
+              className="flex-row items-center px-4 py-3 border-b border-border hover:bg-muted/50 active:bg-muted"
+              onPress={() => {
+                setShowMenu(false);
+                setShowResetDialog(true);
+              }}
+            >
+              <Icon as={TrashIcon} className="size-5 mr-3 text-destructive" />
+              <Text className="text-base text-destructive">Reset All Data</Text>
+            </Pressable>
+            <Pressable
               className="flex-row items-center px-4 py-3 hover:bg-muted/50 active:bg-muted"
               onPress={() => {
                 setColorScheme(colorScheme === 'dark' ? 'light' : 'dark');
@@ -405,25 +417,28 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Sample Data Prompt Dialog */}
-      {showSampleDataPrompt && (
-        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4">
+      {/* Reset Confirmation Dialog */}
+      {showResetDialog && (
+        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
           <View className="bg-card border border-border rounded-lg p-6 max-w-md w-full">
-            <Text className="text-xl font-bold mb-2">Welcome! 👋</Text>
+            <Text className="text-xl font-bold mb-2">Reset All Data?</Text>
             <Text className="text-muted-foreground mb-4">
-              Would you like to load sample data to see how the app works? This will create 10
-              events with 2 years of tracking data to demonstrate pattern insights.
+              This will permanently delete all events and tracking data. This action cannot be undone.
             </Text>
             <View className="flex-row gap-3">
               <Button
                 variant="outline"
-                onPress={handleDismissSampleDataPrompt}
+                onPress={() => setShowResetDialog(false)}
                 className="flex-1"
               >
-                <Text>No, Start Fresh</Text>
+                <Text>Cancel</Text>
               </Button>
-              <Button onPress={handleLoadSampleData} disabled={loadingSampleData} className="flex-1">
-                <Text>{loadingSampleData ? 'Loading...' : 'Yes, Load Sample'}</Text>
+              <Button
+                variant="destructive"
+                onPress={handleResetAllData}
+                className="flex-1"
+              >
+                <Text>Reset All</Text>
               </Button>
             </View>
           </View>
