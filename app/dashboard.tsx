@@ -589,6 +589,27 @@ export default function DashboardScreen() {
       ? useChartPressState({ x: 0, y: {} })
       : { state: null, isActive: false };
 
+    // Keep track of last touched point for mobile
+    const [lastTouchedData, setLastTouchedData] = React.useState<{ date: string; values: Record<string, number> } | null>(null);
+
+    // Update last touched data when chart is pressed
+    React.useEffect(() => {
+      if (isActive && state) {
+        const dataIndex = Math.round(state.x.value as any);
+        const date = combinedChartData[dataIndex]?.date || 'N/A';
+        const values: Record<string, number> = {};
+
+        [...numericEvents, ...stringEvents].forEach(({ event }) => {
+          const value = (state.y as any)[event.name]?.value;
+          if (value !== undefined) {
+            values[event.name] = value;
+          }
+        });
+
+        setLastTouchedData({ date, values });
+      }
+    }, [isActive, state]);
+
     // Web-only tooltip state
     const [webTooltip, setWebTooltip] = React.useState<{ active?: boolean; payload?: any; label?: string } | null>(null);
 
@@ -786,14 +807,14 @@ export default function DashboardScreen() {
                 </CartesianChart>
               </View>
 
-              {/* Tooltip information for mobile */}
-              {isActive && state && (
+              {/* Tooltip information for mobile - shows last touched point */}
+              {lastTouchedData && (
                 <View className="mt-2 p-3 bg-card border border-border rounded-lg">
                   <Text className="text-sm font-semibold mb-1">
-                    {combinedChartData[Math.round(state.x.value as any)]?.date || 'N/A'}
+                    {lastTouchedData.date}
                   </Text>
                   {[...numericEvents, ...stringEvents].map(({ event }) => {
-                    const value = (state.y as any)[event.name]?.value;
+                    const value = lastTouchedData.values[event.name];
                     if (value === undefined) return null;
                     return (
                       <View key={event.id} className="flex-row items-center mt-1">
