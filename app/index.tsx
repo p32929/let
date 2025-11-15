@@ -13,8 +13,7 @@ import { migrateDatabase } from '@/db/migrate';
 import { EventTracker } from '@/components/event-tracker';
 import { addSampleData } from '@/lib/sample-data';
 import { getEventValuesForDateRange } from '@/db/operations/events';
-import { useThemeStore } from '@/lib/stores/theme-store';
-import { useColorScheme } from 'nativewind';
+import { useThemeStore, type ThemeMode } from '@/lib/stores/theme-store';
 
 export default function HomeScreen() {
   const [currentWeekDate, setCurrentWeekDate] = React.useState(new Date());
@@ -27,7 +26,6 @@ export default function HomeScreen() {
   const [weekEventCompletion, setWeekEventCompletion] = React.useState<Record<string, { total: number; completed: number }>>({});
   const { events, loadEvents, isLoading } = useEventsStore();
   const { themeMode, setThemeMode } = useThemeStore();
-  const { setColorScheme } = useColorScheme();
 
   // Animated values for swipe gestures
   const translateX = useSharedValue(0);
@@ -97,21 +95,6 @@ export default function HomeScreen() {
 
     loadWeekCompletion();
   }, [weekDays, events]);
-
-  // Apply theme based on mode
-  React.useEffect(() => {
-    if (themeMode === 'system') {
-      const systemScheme = window?.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      setColorScheme(systemScheme);
-    } else {
-      setColorScheme(themeMode);
-    }
-  }, [themeMode, setColorScheme]);
-
-  const handleThemeChange = (mode: 'light' | 'dark' | 'system') => {
-    setThemeMode(mode);
-    setShowMenu(false);
-  };
 
   const handlePreviousWeek = () => {
     setCurrentWeekDate(getPreviousWeek(currentWeekDate));
@@ -346,32 +329,38 @@ export default function HomeScreen() {
             </Pressable>
 
             {/* Theme Options */}
-            <View className="px-3 py-2">
-              <Text className="text-xs font-semibold text-muted-foreground mb-2 px-1">Theme</Text>
+            <View className="px-4 py-2">
+              <Text className="text-xs font-semibold text-muted-foreground mb-2">THEME</Text>
               <View className="gap-1">
                 <Pressable
-                  className={`flex-row items-center px-3 py-2 rounded-lg active:bg-muted ${themeMode === 'light' ? 'bg-muted' : ''}`}
-                  onPress={() => handleThemeChange('light')}
+                  className={`flex-row items-center px-3 py-2 rounded-md ${themeMode === 'light' ? 'bg-primary/10' : ''}`}
+                  onPress={() => {
+                    setThemeMode('light');
+                    setShowMenu(false);
+                  }}
                 >
-                  <Icon as={SunIcon} className="size-4 mr-3 text-foreground" />
-                  <Text className="text-sm flex-1">Light</Text>
-                  {themeMode === 'light' && <View className="w-2 h-2 rounded-full bg-primary" />}
+                  <Icon as={SunIcon} className={`size-4 mr-3 ${themeMode === 'light' ? 'text-primary' : 'text-foreground'}`} />
+                  <Text className={`text-sm ${themeMode === 'light' ? 'font-medium' : ''}`}>Light</Text>
                 </Pressable>
                 <Pressable
-                  className={`flex-row items-center px-3 py-2 rounded-lg active:bg-muted ${themeMode === 'dark' ? 'bg-muted' : ''}`}
-                  onPress={() => handleThemeChange('dark')}
+                  className={`flex-row items-center px-3 py-2 rounded-md ${themeMode === 'dark' ? 'bg-primary/10' : ''}`}
+                  onPress={() => {
+                    setThemeMode('dark');
+                    setShowMenu(false);
+                  }}
                 >
-                  <Icon as={MoonIcon} className="size-4 mr-3 text-foreground" />
-                  <Text className="text-sm flex-1">Dark</Text>
-                  {themeMode === 'dark' && <View className="w-2 h-2 rounded-full bg-primary" />}
+                  <Icon as={MoonIcon} className={`size-4 mr-3 ${themeMode === 'dark' ? 'text-primary' : 'text-foreground'}`} />
+                  <Text className={`text-sm ${themeMode === 'dark' ? 'font-medium' : ''}`}>Dark</Text>
                 </Pressable>
                 <Pressable
-                  className={`flex-row items-center px-3 py-2 rounded-lg active:bg-muted ${themeMode === 'system' ? 'bg-muted' : ''}`}
-                  onPress={() => handleThemeChange('system')}
+                  className={`flex-row items-center px-3 py-2 rounded-md ${themeMode === 'system' ? 'bg-primary/10' : ''}`}
+                  onPress={() => {
+                    setThemeMode('system');
+                    setShowMenu(false);
+                  }}
                 >
-                  <Icon as={MonitorIcon} className="size-4 mr-3 text-foreground" />
-                  <Text className="text-sm flex-1">System</Text>
-                  {themeMode === 'system' && <View className="w-2 h-2 rounded-full bg-primary" />}
+                  <Icon as={MonitorIcon} className={`size-4 mr-3 ${themeMode === 'system' ? 'text-primary' : 'text-foreground'}`} />
+                  <Text className={`text-sm ${themeMode === 'system' ? 'font-medium' : ''}`}>System</Text>
                 </Pressable>
               </View>
             </View>
