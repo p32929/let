@@ -6,7 +6,7 @@
     "dev": "expo start -c",
     "android": "expo start -c --android",
     "ios": "expo start -c --ios",
-    "web": "expo start -c --web",
+    "web": "expo start -c --web --port 3000",
     "clean": "rm -rf .expo node_modules yarn.lock",
     "typecheck": "tsc --noEmit",
     "prepare": "husky"
