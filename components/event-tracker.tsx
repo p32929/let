@@ -106,33 +106,14 @@ export function EventTracker({ event, date }: EventTrackerProps) {
 
   return (
     <View
-      className="bg-card rounded-xl p-4 flex-row items-center shadow-sm"
-      style={{
-        borderLeftWidth: 4,
-        borderLeftColor: event.color,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 1,
-      }}
+      className="bg-card border-border rounded-lg p-3 flex-row items-center"
+      style={{ borderLeftWidth: 3, borderLeftColor: event.color }}
     >
-      {/* Color dot indicator */}
-      <View
-        className="w-3 h-3 rounded-full mr-3"
-        style={{ backgroundColor: event.color }}
-      />
-
       {/* Event Name */}
       <View className="flex-1 mr-3">
-        <View className="flex-row items-center gap-2">
-          <Text className="font-semibold text-base">{event.name}</Text>
-          {hasValue && (
-            <View className="w-2 h-2 rounded-full bg-green-500" />
-          )}
-        </View>
+        <Text className="font-medium text-base">{event.name}</Text>
         {event.unit && (
-          <Text className="text-xs text-muted-foreground mt-0.5">{event.unit}</Text>
+          <Text className="text-xs text-muted-foreground">{event.unit}</Text>
         )}
       </View>
 
@@ -140,15 +121,10 @@ export function EventTracker({ event, date }: EventTrackerProps) {
       <View className="flex-row items-center gap-2">
         {/* Boolean Widget */}
         {event.type === 'boolean' && (
-          <View className="flex-row items-center gap-2">
-            <Text className="text-sm text-muted-foreground">
-              {value === 'true' ? 'Done' : 'Todo'}
-            </Text>
-            <Switch
-              checked={value === 'true'}
-              onCheckedChange={handleBooleanChange}
-            />
-          </View>
+          <Switch
+            checked={value === 'true'}
+            onCheckedChange={handleBooleanChange}
+          />
         )}
 
         {/* Number Widget */}
@@ -159,24 +135,24 @@ export function EventTracker({ event, date }: EventTrackerProps) {
               variant="ghost"
               onPress={handleNumberDecrement}
               disabled={value === '' || Number(value) <= 0}
-              className="h-9 w-9 rounded-full"
+              className="h-8 w-8"
             >
               <Icon as={MinusIcon} className="size-4" />
             </Button>
-            <View className="bg-muted/50 rounded-lg px-3 py-2 min-w-[60px]">
+            <View className="bg-muted/40 rounded-md px-3 min-w-[60px]">
               <Input
                 value={value}
                 onChangeText={handleNumberChange}
                 keyboardType="numeric"
                 placeholder="0"
-                className="text-center native:h-6 text-base font-bold p-0 bg-transparent border-0"
+                className="text-center native:h-8 text-base font-semibold p-0 bg-transparent border-0"
               />
             </View>
             <Button
               size="icon"
               variant="ghost"
               onPress={handleNumberIncrement}
-              className="h-9 w-9 rounded-full"
+              className="h-8 w-8"
             >
               <Icon as={PlusIcon} className="size-4" />
             </Button>
@@ -188,8 +164,8 @@ export function EventTracker({ event, date }: EventTrackerProps) {
           <Input
             value={value}
             onChangeText={handleTextChange}
-            placeholder="Add note..."
-            className="native:h-9 w-36 text-sm bg-muted/50 rounded-lg"
+            placeholder="Enter text..."
+            className="native:h-8 w-32 text-sm"
           />
         )}
 
@@ -198,7 +174,7 @@ export function EventTracker({ event, date }: EventTrackerProps) {
           size="icon"
           variant="ghost"
           onPress={() => router.push({ pathname: '/edit-event' as any, params: { id: event.id.toString() } })}
-          className="h-9 w-9 rounded-full"
+          className="h-8 w-8"
         >
           <Icon as={Settings2Icon} className="size-4 text-muted-foreground" />
         </Button>
