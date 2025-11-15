@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Stack } from 'expo-router';
 import * as React from 'react';
-import { View, ScrollView, Dimensions, Platform } from 'react-native';
+import { View, ScrollView, Dimensions, Platform, Pressable } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getEventValuesForDateRange } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
@@ -763,76 +763,7 @@ export default function DashboardScreen() {
                     borderRadius: 0,
                     paddingRight: 0
                   }}
-                  decorator={() => {
-                    // Show tooltip decorator
-                    if (tooltipPos && tooltipPos.visible) {
-                      // Smart positioning to keep tooltip within screen bounds
-                      const tooltipWidth = 180;
-                      const tooltipHeight = 150;
-                      const padding = 8;
-
-                      // Calculate horizontal position
-                      let leftPos = tooltipPos.x - tooltipWidth / 2;
-                      if (leftPos < padding) leftPos = padding;
-                      if (leftPos + tooltipWidth > screenWidth - padding) {
-                        leftPos = screenWidth - tooltipWidth - padding;
-                      }
-
-                      // Calculate vertical position (always above the point)
-                      let topPos = tooltipPos.y - tooltipHeight - 10;
-                      if (topPos < padding) {
-                        // If no room above, show below the point
-                        topPos = tooltipPos.y + 20;
-                      }
-
-                      return (
-                        <View
-                          style={{
-                            position: 'absolute',
-                            left: leftPos,
-                            top: topPos,
-                            backgroundColor: 'rgba(0, 0, 0, 0.9)',
-                            padding: 12,
-                            borderRadius: 8,
-                            borderWidth: 1,
-                            borderColor: '#444',
-                            minWidth: tooltipWidth,
-                            maxWidth: tooltipWidth,
-                            shadowColor: '#000',
-                            shadowOffset: { width: 0, height: 2 },
-                            shadowOpacity: 0.25,
-                            shadowRadius: 4,
-                            elevation: 5,
-                          }}
-                        >
-                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold', marginBottom: 4 }}>
-                            {tooltipPos.data.date}
-                          </Text>
-                          {[...numericEvents, ...stringEvents].map(({ event }) => {
-                            const value = tooltipPos.data[event.name];
-                            if (value === undefined || value === null) return null;
-                            return (
-                              <View key={event.id} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                                <View
-                                  style={{
-                                    width: 8,
-                                    height: 8,
-                                    borderRadius: 4,
-                                    backgroundColor: event.color,
-                                    marginRight: 6,
-                                  }}
-                                />
-                                <Text style={{ color: '#fff', fontSize: 11 }}>
-                                  {event.name}: {value.toFixed(1)}%
-                                </Text>
-                              </View>
-                            );
-                          })}
-                        </View>
-                      );
-                    }
-                    return null;
-                  }}
+                  decorator={() => null}
                   onDataPointClick={(data: any) => {
                     // Show tooltip on click
                     const dataPoint = combinedChartData[data.index];
@@ -848,16 +779,65 @@ export default function DashboardScreen() {
                 />
               </ScrollView>
 
-              {/* Tap anywhere to hide tooltip */}
+              {/* Tooltip overlay - positioned absolutely over everything */}
               {tooltipPos && tooltipPos.visible && (
-                <View style={{ marginTop: 8 }}>
-                  <Text
-                    style={{ color: '#888', fontSize: 11, textAlign: 'center', fontStyle: 'italic' }}
-                    onPress={() => setTooltipPos(null)}
+                <Pressable
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: 1000,
+                  }}
+                  onPress={() => setTooltipPos(null)}
+                >
+                  <View
+                    style={{
+                      position: 'absolute',
+                      left: Math.max(16, Math.min(tooltipPos.x - 90, screenWidth - 196)),
+                      top: Math.max(16, tooltipPos.y - 160),
+                      backgroundColor: 'rgba(0, 0, 0, 0.95)',
+                      padding: 16,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: '#555',
+                      width: 180,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.3,
+                      shadowRadius: 8,
+                      elevation: 10,
+                    }}
                   >
-                    Tap here to hide tooltip
-                  </Text>
-                </View>
+                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>
+                      {tooltipPos.data.date}
+                    </Text>
+                    {[...numericEvents, ...stringEvents].map(({ event }) => {
+                      const value = tooltipPos.data[event.name];
+                      if (value === undefined || value === null) return null;
+                      return (
+                        <View key={event.id} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                          <View
+                            style={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: 5,
+                              backgroundColor: event.color,
+                              marginRight: 8,
+                            }}
+                          />
+                          <Text style={{ color: '#fff', fontSize: 12, flex: 1 }}>
+                            {event.name}: {value.toFixed(1)}%
+                          </Text>
+                        </View>
+                      );
+                    })}
+                    <Text style={{ color: '#888', fontSize: 10, textAlign: 'center', marginTop: 12, fontStyle: 'italic' }}>
+                      Tap anywhere to close
+                    </Text>
+                  </View>
+                </Pressable>
               )}
             </View>
           )}
