@@ -193,9 +193,9 @@ export default function DashboardScreen() {
             if (shouldInclude) {
               relatedEvents.push(numEvent);
               if (maxMatching - minMatching > 0.5) {
-                outcomes.push(`${numEvent.name} of ${minMatching.toFixed(1)} to ${maxMatching.toFixed(1)}${unit}`);
+                outcomes.push(`${numEvent.name} ${minMatching.toFixed(1)}-${maxMatching.toFixed(1)}${unit}`);
               } else {
-                outcomes.push(`${numEvent.name} of about ${avgMatching.toFixed(1)}${unit}`);
+                outcomes.push(`${numEvent.name} ${avgMatching.toFixed(1)}${unit}`);
               }
             }
           }
@@ -230,12 +230,12 @@ export default function DashboardScreen() {
                 relatedEvents.push(boolEvent);
                 if (diff > 0) {
                   outcomeText = matchingRate >= 80
-                    ? `a ${boolEvent.name}`
-                    : `${boolEvent.name} (${matchingRate.toFixed(0)}% of the time)`;
+                    ? boolEvent.name
+                    : `${boolEvent.name} ${matchingRate.toFixed(0)}%`;
                 } else {
                   outcomeText = matchingRate <= 20
-                    ? `no ${boolEvent.name}`
-                    : `less ${boolEvent.name} (only ${matchingRate.toFixed(0)}% of the time)`;
+                    ? `No ${boolEvent.name}`
+                    : `${boolEvent.name} ${matchingRate.toFixed(0)}%`;
                 }
               }
             } else {
@@ -243,11 +243,11 @@ export default function DashboardScreen() {
               if (matchingRate >= 70) {
                 shouldInclude = true;
                 relatedEvents.push(boolEvent);
-                outcomeText = `a ${boolEvent.name}`;
+                outcomeText = boolEvent.name;
               } else if (matchingRate <= 30) {
                 shouldInclude = true;
                 relatedEvents.push(boolEvent);
-                outcomeText = `no ${boolEvent.name}`;
+                outcomeText = `No ${boolEvent.name}`;
               }
             }
 
@@ -259,7 +259,8 @@ export default function DashboardScreen() {
 
         // Create pattern with ALL correlated events
         if (outcomes.length > 0) {
-          const description = `When ${stringEvent.name} is "${value}", you tend to have ${outcomes.join(' and ')}`;
+          // Format as concise formula: "Dress color 'yellow' → Sleep 5-7h → Good day → ..."
+          const description = `${stringEvent.name} "${value}" → ${outcomes.join(' → ')}`;
           patterns.push({
             description,
             confidence: Math.min(95, 65 + outcomes.length * 4),
@@ -321,9 +322,9 @@ export default function DashboardScreen() {
           if (shouldInclude) {
             trueRelatedEvents.push(numEvent);
             if (maxTrue - minTrue > 0.5) {
-              trueOutcomes.push(`${numEvent.name} of ${minTrue.toFixed(1)} to ${maxTrue.toFixed(1)}${unit}`);
+              trueOutcomes.push(`${numEvent.name} ${minTrue.toFixed(1)}-${maxTrue.toFixed(1)}${unit}`);
             } else {
-              trueOutcomes.push(`${numEvent.name} of about ${avgTrue.toFixed(1)}${unit}`);
+              trueOutcomes.push(`${numEvent.name} ${avgTrue.toFixed(1)}${unit}`);
             }
           }
         }
@@ -360,23 +361,23 @@ export default function DashboardScreen() {
               trueRelatedEvents.push(otherBool);
               if (diff > 0) {
                 outcomeText = trueRate >= 80
-                  ? `a ${otherBool.name}`
-                  : `${otherBool.name} (${trueRate.toFixed(0)}% of the time)`;
+                  ? otherBool.name
+                  : `${otherBool.name} ${trueRate.toFixed(0)}%`;
               } else {
                 outcomeText = trueRate <= 20
-                  ? `no ${otherBool.name}`
-                  : `less ${otherBool.name} (only ${trueRate.toFixed(0)}% of the time)`;
+                  ? `No ${otherBool.name}`
+                  : `${otherBool.name} ${trueRate.toFixed(0)}%`;
               }
             }
           } else {
             if (trueRate >= 70) {
               shouldInclude = true;
               trueRelatedEvents.push(otherBool);
-              outcomeText = `a ${otherBool.name}`;
+              outcomeText = otherBool.name;
             } else if (trueRate <= 30) {
               shouldInclude = true;
               trueRelatedEvents.push(otherBool);
-              outcomeText = `no ${otherBool.name}`;
+              outcomeText = `No ${otherBool.name}`;
             }
           }
 
@@ -402,13 +403,15 @@ export default function DashboardScreen() {
 
           if (mostCommon && mostCommon[1] / trueStrValues.length >= 0.5) {
             trueRelatedEvents.push(strEvent);
-            trueOutcomes.push(`${strEvent.name} of "${mostCommon[0]}" (${((mostCommon[1] / trueStrValues.length) * 100).toFixed(0)}% of the time)`);
+            const pct = ((mostCommon[1] / trueStrValues.length) * 100).toFixed(0);
+            trueOutcomes.push(`${strEvent.name} "${mostCommon[0]}" ${pct}%`);
           }
         }
       }
 
       if (trueOutcomes.length > 0) {
-        const description = `When you have a ${boolEvent.name}, you tend to have ${trueOutcomes.join(' and ')}`;
+        // Format as concise formula: "Good day → Sleep 6-8h → Romance 2h → ..."
+        const description = `${boolEvent.name} → ${trueOutcomes.join(' → ')}`;
         patterns.push({
           description,
           confidence: Math.min(95, 65 + trueOutcomes.length * 4),
@@ -470,7 +473,7 @@ export default function DashboardScreen() {
           if (percentDiff > 5 || diff > 0.5) {
             highRelatedEvents.push(otherNum);
             const otherUnit = otherNum.unit ? ` ${otherNum.unit}` : '';
-            highOutcomes.push(`${otherNum.name} of about ${avgHigh.toFixed(1)}${otherUnit}`);
+            highOutcomes.push(`${otherNum.name} ${avgHigh.toFixed(1)}${otherUnit}`);
           }
         }
       }
@@ -495,10 +498,10 @@ export default function DashboardScreen() {
           if (Math.abs(diff) > 10) {
             highRelatedEvents.push(boolEv);
             if (diff > 0) {
-              const text = highRate >= 80 ? `a ${boolEv.name}` : `${boolEv.name} (${highRate.toFixed(0)}% of the time)`;
+              const text = highRate >= 80 ? boolEv.name : `${boolEv.name} ${highRate.toFixed(0)}%`;
               highOutcomes.push(text);
             } else {
-              const text = highRate <= 20 ? `no ${boolEv.name}` : `less ${boolEv.name} (only ${highRate.toFixed(0)}% of the time)`;
+              const text = highRate <= 20 ? `No ${boolEv.name}` : `${boolEv.name} ${highRate.toFixed(0)}%`;
               highOutcomes.push(text);
             }
           }
@@ -512,7 +515,8 @@ export default function DashboardScreen() {
           .map(d => d!.value as number)
           .reduce((a, b) => a + b, 0) / highDates.length;
 
-        const description = `When you have high ${numEvent.name} (above ${threshold.toFixed(1)}${unit}, avg ${avgHigh.toFixed(1)}${unit}), you tend to have ${highOutcomes.join(' and ')}`;
+        // Format as concise formula: "Sleep 7+h → Good day → Romance 2h → ..."
+        const description = `${numEvent.name} ${threshold.toFixed(1)}+${unit} → ${highOutcomes.join(' → ')}`;
         patterns.push({
           description,
           confidence: Math.min(95, 65 + highOutcomes.length * 4),
