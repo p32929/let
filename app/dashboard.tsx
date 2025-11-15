@@ -149,7 +149,6 @@ export default function DashboardScreen() {
 
     // PERFORMANCE OPTIMIZATION: Limit analysis when there are too many events
     const MAX_PATTERNS = 50; // Stop after finding 50 patterns to avoid UI lag
-    const shouldLimitAnalysis = allData.length > 10; // Use simpler analysis for >10 events
 
     // COMPREHENSIVE PATTERN DISCOVERY FOR MAXIMUM PREDICTIVE VALUE
     // Goal: Find ALL meaningful patterns with as many correlated events as possible
@@ -545,12 +544,6 @@ export default function DashboardScreen() {
       }
 
       if (highOutcomes.length > 0) {
-        const avgHigh = highDates
-          .map(date => numData.find(d => d.date === date))
-          .filter(d => d && typeof d.value === 'number')
-          .map(d => d!.value as number)
-          .reduce((a, b) => a + b, 0) / highDates.length;
-
         // Format as concise formula: "Sleep 7+h → Good day → Romance 2h → ..."
         const description = `${numEvent.name} ${threshold.toFixed(1)}+${unit} → ${highOutcomes.join(' → ')}`;
         patterns.push({
@@ -736,7 +729,7 @@ export default function DashboardScreen() {
                     labels: combinedChartData.map(d => d.date),
                     datasets: [...numericEvents, ...stringEvents].map(({ event }) => ({
                       data: combinedChartData.map(d => d[event.name] || 0),
-                      color: (opacity = 1) => event.color,
+                      color: (_opacity = 1) => event.color,
                       strokeWidth: 2,
                     })),
                     legend: [...numericEvents, ...stringEvents].map(({ event }) => event.name)
@@ -861,8 +854,36 @@ export default function DashboardScreen() {
       />
       <ScrollView className="flex-1 bg-background p-4">
         {isLoading ? (
-          <View className="items-center justify-center py-12">
-            <Text className="text-muted-foreground">Analyzing patterns...</Text>
+          <View className="py-4">
+            {/* Loading skeletons for dashboard */}
+            <View className="mb-6">
+              <Skeleton className="w-32 h-8 rounded mb-3" />
+              <View className="flex-row gap-2 mb-4">
+                <Skeleton className="flex-1 h-9 rounded" />
+                <Skeleton className="flex-1 h-9 rounded" />
+                <Skeleton className="flex-1 h-9 rounded" />
+              </View>
+              <Skeleton className="w-full h-64 rounded mb-4" />
+            </View>
+            <View className="mb-6">
+              <Skeleton className="w-48 h-8 rounded mb-3" />
+              {[1, 2, 3].map((i) => (
+                <View key={i} className="bg-card border border-border rounded-lg p-4 mb-3">
+                  <View className="flex-row items-center mb-3">
+                    <Skeleton className="w-3 h-3 rounded-full mr-2" />
+                    <Skeleton className="w-20 h-4 rounded" />
+                    <Skeleton className="w-3 h-3 rounded-full mx-2" />
+                    <Skeleton className="w-20 h-4 rounded" />
+                  </View>
+                  <Skeleton className="w-full h-4 rounded mb-2" />
+                  <Skeleton className="w-3/4 h-4 rounded mb-3" />
+                  <View className="flex-row items-center justify-between">
+                    <Skeleton className="w-24 h-3 rounded" />
+                    <Skeleton className="w-20 h-3 rounded" />
+                  </View>
+                </View>
+              ))}
+            </View>
           </View>
         ) : events.length === 0 ? (
           <View className="items-center justify-center py-12">
