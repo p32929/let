@@ -1,5 +1,6 @@
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Stack } from 'expo-router';
 import * as React from 'react';
 import { View, ScrollView, Dimensions, Platform } from 'react-native';
@@ -937,24 +938,21 @@ export default function DashboardScreen() {
               </Text>
 
               {isAnalyzingPatterns ? (
-                /* Shimmer loading effect */
+                /* Skeleton loading effect */
                 <>
                   {[1, 2, 3].map((i) => (
-                    <View
-                      key={i}
-                      className="bg-card border border-border rounded-lg p-4 mb-3 overflow-hidden"
-                    >
+                    <View key={i} className="bg-card border border-border rounded-lg p-4 mb-3">
                       <View className="flex-row items-center mb-3">
-                        <View className="w-3 h-3 rounded-full bg-muted mr-2 animate-pulse" />
-                        <View className="w-20 h-4 bg-muted rounded animate-pulse" />
-                        <View className="w-3 h-3 rounded-full bg-muted mx-2 animate-pulse" />
-                        <View className="w-20 h-4 bg-muted rounded animate-pulse" />
+                        <Skeleton className="w-3 h-3 rounded-full mr-2" />
+                        <Skeleton className="w-20 h-4 rounded" />
+                        <Skeleton className="w-3 h-3 rounded-full mx-2" />
+                        <Skeleton className="w-20 h-4 rounded" />
                       </View>
-                      <View className="w-full h-4 bg-muted rounded mb-2 animate-pulse" />
-                      <View className="w-3/4 h-4 bg-muted rounded mb-3 animate-pulse" />
+                      <Skeleton className="w-full h-4 rounded mb-2" />
+                      <Skeleton className="w-3/4 h-4 rounded mb-3" />
                       <View className="flex-row items-center justify-between">
-                        <View className="w-24 h-3 bg-muted rounded animate-pulse" />
-                        <View className="w-20 h-3 bg-muted rounded animate-pulse" />
+                        <Skeleton className="w-24 h-3 rounded" />
+                        <Skeleton className="w-20 h-3 rounded" />
                       </View>
                     </View>
                   ))}
