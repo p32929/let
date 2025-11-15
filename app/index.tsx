@@ -304,11 +304,12 @@ export default function HomeScreen() {
 
       {/* Popup Menu */}
       {showMenu && (
-        <Pressable
-          className="absolute inset-0 bg-transparent"
-          onPress={() => setShowMenu(false)}
-        >
-          <View className="absolute top-14 right-4 bg-card border border-border rounded-lg shadow-lg min-w-[200px] overflow-hidden">
+        <>
+          <Pressable
+            className="absolute inset-0 bg-transparent z-40"
+            onPress={() => setShowMenu(false)}
+          />
+          <View className="absolute top-16 right-4 bg-card border border-border rounded-lg shadow-lg min-w-[200px] overflow-hidden z-50">
             <Pressable
               className="flex-row items-center px-4 py-3 border-b border-border active:bg-muted"
               onPress={() => {
@@ -339,7 +340,7 @@ export default function HomeScreen() {
               <Text className="text-base">{colorScheme === 'dark' ? 'Light Mode' : 'Dark Mode'}</Text>
             </Pressable>
           </View>
-        </Pressable>
+        </>
       )}
 
       {/* Sample Data Prompt Dialog */}
