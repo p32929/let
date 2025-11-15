@@ -705,21 +705,6 @@ export default function DashboardScreen() {
         <Text className="text-xs text-muted-foreground mt-3">
           * Values normalized to 0-100% scale for visual comparison. Scroll horizontally to see all data points!
         </Text>
-        {stringEvents.length > 0 && (
-          <View className="mt-3 pt-3 border-t border-border">
-            <Text className="text-xs font-semibold text-muted-foreground mb-2">Text Event Values:</Text>
-            {stringEvents.map(({ event }) => {
-              const mapping = stringValueMappings[event.name];
-              return (
-                <View key={event.id} className="mb-2">
-                  <Text className="text-xs text-muted-foreground">
-                    <Text className="font-semibold" style={{ color: event.color }}>{event.name}:</Text> {mapping.values.join(', ')}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        )}
       </View>
     );
   };
