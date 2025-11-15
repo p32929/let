@@ -743,24 +743,31 @@ export default function DashboardScreen() {
                   width={Math.max(screenWidth - 32, combinedChartData.length * 50)}
                   height={250}
                   chartConfig={{
-                    backgroundColor: '#1e1e1e',
-                    backgroundGradientFrom: '#1e1e1e',
-                    backgroundGradientTo: '#1e1e1e',
+                    backgroundColor: '#ffffff',
+                    backgroundGradientFrom: '#ffffff',
+                    backgroundGradientTo: '#ffffff',
+                    backgroundGradientFromOpacity: 0,
+                    backgroundGradientToOpacity: 0,
                     decimalPlaces: 1,
-                    color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-                    labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity * 0.7})`,
+                    color: (opacity = 1) => `rgba(136, 136, 136, ${opacity})`,
+                    labelColor: (opacity = 1) => `rgba(136, 136, 136, ${opacity})`,
                     style: {
-                      borderRadius: 16
+                      borderRadius: 0
                     },
                     propsForDots: {
                       r: "4",
                       strokeWidth: "2",
                     }
                   }}
+                  withShadow={false}
+                  withInnerLines={false}
+                  withVerticalLines={false}
+                  withHorizontalLines={false}
                   bezier
                   style={{
                     marginVertical: 8,
-                    borderRadius: 16
+                    borderRadius: 0,
+                    paddingRight: 0
                   }}
                   decorator={() => {
                     // Show tooltip decorator
@@ -922,43 +929,39 @@ export default function DashboardScreen() {
               <CombinedChart />
             </View>
 
-            {/* Patterns Section */}
-            {isAnalyzingPatterns ? (
-              <View className="mb-6">
-                <Text className="text-2xl font-bold mb-1">🔍 Discovered Patterns</Text>
-                <Text className="text-muted-foreground mb-4">
-                  Analyzing your data...
-                </Text>
+            {/* Patterns Section - Always show, just indicate loading state */}
+            <View className="mb-6">
+              <Text className="text-2xl font-bold mb-1">🔍 Discovered Patterns</Text>
+              <Text className="text-muted-foreground mb-4">
+                {isAnalyzingPatterns ? 'Analyzing your data...' : 'Based on your tracked data'}
+              </Text>
 
-                {/* Shimmer loading effect */}
-                {[1, 2, 3].map((i) => (
-                  <View
-                    key={i}
-                    className="bg-card border border-border rounded-lg p-4 mb-3 overflow-hidden"
-                  >
-                    <View className="flex-row items-center mb-3">
-                      <View className="w-3 h-3 rounded-full bg-muted mr-2 animate-pulse" />
-                      <View className="w-20 h-4 bg-muted rounded animate-pulse" />
-                      <View className="w-3 h-3 rounded-full bg-muted mx-2 animate-pulse" />
-                      <View className="w-20 h-4 bg-muted rounded animate-pulse" />
+              {isAnalyzingPatterns ? (
+                /* Shimmer loading effect */
+                <>
+                  {[1, 2, 3].map((i) => (
+                    <View
+                      key={i}
+                      className="bg-card border border-border rounded-lg p-4 mb-3 overflow-hidden"
+                    >
+                      <View className="flex-row items-center mb-3">
+                        <View className="w-3 h-3 rounded-full bg-muted mr-2 animate-pulse" />
+                        <View className="w-20 h-4 bg-muted rounded animate-pulse" />
+                        <View className="w-3 h-3 rounded-full bg-muted mx-2 animate-pulse" />
+                        <View className="w-20 h-4 bg-muted rounded animate-pulse" />
+                      </View>
+                      <View className="w-full h-4 bg-muted rounded mb-2 animate-pulse" />
+                      <View className="w-3/4 h-4 bg-muted rounded mb-3 animate-pulse" />
+                      <View className="flex-row items-center justify-between">
+                        <View className="w-24 h-3 bg-muted rounded animate-pulse" />
+                        <View className="w-20 h-3 bg-muted rounded animate-pulse" />
+                      </View>
                     </View>
-                    <View className="w-full h-4 bg-muted rounded mb-2 animate-pulse" />
-                    <View className="w-3/4 h-4 bg-muted rounded mb-3 animate-pulse" />
-                    <View className="flex-row items-center justify-between">
-                      <View className="w-24 h-3 bg-muted rounded animate-pulse" />
-                      <View className="w-20 h-3 bg-muted rounded animate-pulse" />
-                    </View>
-                  </View>
-                ))}
-              </View>
-            ) : patterns.length > 0 ? (
-              <View className="mb-6">
-                <Text className="text-2xl font-bold mb-1">🔍 Discovered Patterns</Text>
-                <Text className="text-muted-foreground mb-4">
-                  Based on your tracked data
-                </Text>
-
-                {patterns.map((pattern, index) => {
+                  ))}
+                </>
+              ) : patterns.length > 0 ? (
+                <>
+                  {patterns.map((pattern, index) => {
                   // Create a map of event names to colors for quick lookup
                   const eventColorMap: Record<string, string> = {};
                   pattern.events.forEach(event => {
@@ -1029,15 +1032,13 @@ export default function DashboardScreen() {
                     </View>
                   );
                 })}
-              </View>
-            ) : (
-              <View className="mb-6">
-                <Text className="text-2xl font-bold mb-1">🔍 Discovered Patterns</Text>
-                <Text className="text-muted-foreground mb-4">
+                </>
+              ) : (
+                <Text className="text-sm text-muted-foreground">
                   No clear patterns found yet. Keep tracking to discover insights!
                 </Text>
-              </View>
-            )}
+              )}
+            </View>
           </View>
         )}
       </ScrollView>
