@@ -183,7 +183,7 @@ export default function HomeScreen() {
               </Button>
               <Button
                 size="icon"
-                variant="default"
+                variant="ghost"
                 className="rounded-full"
                 onPress={() => router.push('/add-event')}
               >
