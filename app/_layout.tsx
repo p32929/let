@@ -6,10 +6,9 @@ import { PortalHost } from '@rn-primitives/portal';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'nativewind';
+import { useColorScheme as useSystemColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useThemeStore } from '@/lib/stores/theme-store';
 import * as React from 'react';
-import { useColorScheme as useDeviceColorScheme } from 'react-native';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -17,21 +16,19 @@ export {
 } from 'expo-router';
 
 export default function RootLayout() {
+  const systemColorScheme = useSystemColorScheme();
   const { colorScheme, setColorScheme } = useColorScheme();
-  const deviceColorScheme = useDeviceColorScheme();
-  const { themeMode } = useThemeStore();
 
+  // Initialize with system theme on first load
   React.useEffect(() => {
-    if (themeMode === 'system') {
-      setColorScheme(deviceColorScheme === 'dark' ? 'dark' : 'light');
-    } else {
-      setColorScheme(themeMode);
+    if (systemColorScheme && !colorScheme) {
+      setColorScheme(systemColorScheme);
     }
-  }, [themeMode, deviceColorScheme, setColorScheme]);
+  }, [systemColorScheme]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={NAV_THEME[colorScheme ?? 'light']}>
+      <ThemeProvider value={NAV_THEME[colorScheme ?? systemColorScheme ?? 'light']}>
         <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
         <Stack />
         <PortalHost />
