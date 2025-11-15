@@ -173,12 +173,18 @@ export default function HomeScreen() {
       <Stack.Screen
         options={{
           title: 'Life Events Tracker',
-          headerRight: () => (
+        }}
+      />
+      <GestureDetector gesture={panGesture}>
+        <Animated.View style={[{ flex: 1 }, animatedStyle]} className="bg-background">
+          {/* Custom Header */}
+          <View className="bg-card border-b border-border px-4 py-3 flex-row items-center justify-between">
+            <Text className="text-xl font-bold">Life Events Tracker</Text>
             <View className="flex-row gap-1">
               <Button
                 size="icon"
                 variant="ghost"
-                className="rounded-full"
+                className="rounded-full h-10 w-10"
                 onPress={() => setShowMenu(!showMenu)}
               >
                 <Icon as={MoreVerticalIcon} className="size-5" />
@@ -186,17 +192,13 @@ export default function HomeScreen() {
               <Button
                 size="icon"
                 variant="ghost"
-                className="rounded-full"
+                className="rounded-full h-10 w-10"
                 onPress={() => router.push('/add-event')}
               >
                 <Icon as={PlusIcon} className="size-5" />
               </Button>
             </View>
-          ),
-        }}
-      />
-      <GestureDetector gesture={panGesture}>
-        <Animated.View style={[{ flex: 1 }, animatedStyle]} className="bg-background">
+          </View>
           {/* Week Navigation */}
           <View className="border-b border-border p-4">
             <View className="flex-row items-center justify-between mb-4">
