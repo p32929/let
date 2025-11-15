@@ -105,87 +105,53 @@ export function EventTracker({ event, date }: EventTrackerProps) {
     : value.trim() !== '';
 
   return (
-    <View className="bg-card border border-border rounded-xl overflow-hidden">
-      {/* Header with color accent */}
-      <View
-        className="p-4 flex-row items-center justify-between"
-        style={{ backgroundColor: event.color + '15' }}
-      >
-        <View className="flex-row items-center flex-1">
-          <View
-            className="w-1 h-12 rounded-full mr-3"
-            style={{ backgroundColor: event.color }}
-          />
-          <View className="flex-1">
-            <Text className="font-semibold text-lg">{event.name}</Text>
-            {event.unit && (
-              <Text className="text-sm text-muted-foreground mt-0.5">
-                {event.unit}
-              </Text>
-            )}
-          </View>
-        </View>
-        <View className="flex-row items-center gap-2">
-          {hasValue && (
-            <View className="bg-green-500/20 px-2 py-1 rounded-full">
-              <Text className="text-xs text-green-500 font-medium">✓</Text>
-            </View>
-          )}
-          <Button
-            size="icon"
-            variant="ghost"
-            onPress={() => router.push({ pathname: '/edit-event' as any, params: { id: event.id.toString() } })}
-          >
-            <Icon as={Settings2Icon} className="size-4 text-muted-foreground" />
-          </Button>
-        </View>
+    <View className="bg-card border border-border rounded-lg p-3 flex-row items-center" style={{ borderLeftWidth: 4, borderLeftColor: event.color }}>
+      {/* Event Name */}
+      <View className="flex-1 mr-3">
+        <Text className="font-semibold text-base">{event.name}</Text>
+        {event.unit && (
+          <Text className="text-xs text-muted-foreground">{event.unit}</Text>
+        )}
       </View>
 
-      {/* Input Area */}
-      <View className="p-4 pt-2">
+      {/* Input Widget */}
+      <View className="flex-row items-center gap-2">
         {/* Boolean Widget */}
         {event.type === 'boolean' && (
-          <View className="flex-row items-center justify-between bg-muted/30 rounded-lg p-4">
-            <Text className="text-base font-medium">
-              {value === 'true' ? 'Completed' : 'Not done yet'}
-            </Text>
-            <Switch
-              checked={value === 'true'}
-              onCheckedChange={handleBooleanChange}
-            />
-          </View>
+          <Switch
+            checked={value === 'true'}
+            onCheckedChange={handleBooleanChange}
+          />
         )}
 
         {/* Number Widget */}
         {event.type === 'number' && (
-          <View className="flex-row items-center gap-3">
+          <>
             <Button
-              size="lg"
+              size="icon"
               variant="outline"
               onPress={handleNumberDecrement}
               disabled={value === '' || Number(value) <= 0}
-              className="flex-1"
+              className="h-10 w-10"
             >
-              <Icon as={MinusIcon} className="size-5" />
+              <Icon as={MinusIcon} className="size-4" />
             </Button>
-            <View className="flex-2 min-w-[100px]">
-              <Input
-                value={value}
-                onChangeText={handleNumberChange}
-                keyboardType="numeric"
-                placeholder="0"
-                className="text-center native:h-14 text-xl font-semibold"
-              />
-            </View>
+            <Input
+              value={value}
+              onChangeText={handleNumberChange}
+              keyboardType="numeric"
+              placeholder="0"
+              className="text-center native:h-10 w-20 text-base font-semibold"
+            />
             <Button
-              size="lg"
+              size="icon"
               variant="outline"
               onPress={handleNumberIncrement}
-              className="flex-1"
+              className="h-10 w-10"
             >
-              <Icon as={PlusIcon} className="size-5" />
+              <Icon as={PlusIcon} className="size-4" />
             </Button>
-          </View>
+          </>
         )}
 
         {/* String Widget */}
@@ -193,11 +159,20 @@ export function EventTracker({ event, date }: EventTrackerProps) {
           <Input
             value={value}
             onChangeText={handleTextChange}
-            placeholder="Enter notes..."
-            className="native:h-14 bg-muted/30 text-base"
-            multiline
+            placeholder="Enter text..."
+            className="native:h-10 w-40 text-sm"
           />
         )}
+
+        {/* Settings Button */}
+        <Button
+          size="icon"
+          variant="ghost"
+          onPress={() => router.push({ pathname: '/edit-event' as any, params: { id: event.id.toString() } })}
+          className="h-10 w-10"
+        >
+          <Icon as={Settings2Icon} className="size-4 text-muted-foreground" />
+        </Button>
       </View>
     </View>
   );
