@@ -858,8 +858,8 @@ export default function DashboardScreen() {
                           <Text className="text-base">{mainText}</Text>
                           {percentText && (
                             <>
-                              <Text className="text-muted-foreground mx-1">·</Text>
-                              <Text className="text-base text-muted-foreground">{percentText}</Text>
+                              <Text className="text-muted-foreground mx-2">•</Text>
+                              <Text className="text-sm font-medium" style={{ color: '#888' }}>{percentText}</Text>
                             </>
                           )}
                         </View>
