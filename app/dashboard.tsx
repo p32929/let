@@ -843,14 +843,25 @@ export default function DashboardScreen() {
                         }
                       }
 
+                      // Split by percentage to add separator
+                      const percentMatch = part.match(/^(.+?)(\s+\d+%)$/);
+                      const mainText = percentMatch ? percentMatch[1].trim() : part.trim();
+                      const percentText = percentMatch ? percentMatch[2].trim() : null;
+
                       return (
                         <View key={i} className="flex-row items-center flex-wrap">
-                          {i > 0 && <Text className="text-muted-foreground mx-1">→</Text>}
+                          {i > 0 && <Text className="text-muted-foreground mx-2">→</Text>}
                           <View
-                            className="w-2 h-2 rounded-full mr-1"
+                            className="w-2 h-2 rounded-full mr-2"
                             style={{ backgroundColor: eventColor }}
                           />
-                          <Text className="text-base">{part.trim()}</Text>
+                          <Text className="text-base">{mainText}</Text>
+                          {percentText && (
+                            <>
+                              <Text className="text-muted-foreground mx-1">·</Text>
+                              <Text className="text-base text-muted-foreground">{percentText}</Text>
+                            </>
+                          )}
                         </View>
                       );
                     });
