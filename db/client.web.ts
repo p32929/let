@@ -138,6 +138,35 @@ class WebDatabase {
     );
     await this.saveToStorage();
   }
+
+  // Batch operations for better performance
+  async batchSetEventValues(values: Array<{ eventId: number; date: string; value: string }>): Promise<void> {
+    await this.init();
+
+    for (const { eventId, date, value } of values) {
+      const existing = this.eventValues.find(v => v.eventId === eventId && v.date === date);
+
+      if (existing) {
+        existing.value = value;
+        existing.timestamp = new Date();
+        existing.updatedAt = new Date();
+      } else {
+        const eventValue: EventValue = {
+          id: this.nextValueId++,
+          eventId,
+          date,
+          value,
+          timestamp: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        this.eventValues.push(eventValue);
+      }
+    }
+
+    // Save once at the end instead of after each value
+    await this.saveToStorage();
+  }
 }
 
 // Export a singleton instance

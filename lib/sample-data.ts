@@ -100,21 +100,28 @@ export async function addSampleData(onProgress?: (progress: number, message: str
   const today = new Date();
   let dataPointCount = 0;
   const totalDays = 730;
-  const batchSize = 50; // Process 50 days at a time for better UX
+  const batchSize = 100; // Process 100 days at a time for better performance
 
   // Dress colors and wake up times
   const dressColors = ['red', 'blue', 'black', 'white', 'green', 'pink', 'purple', 'yellow'];
   const wakeUpTimes = ['6am', '7am', '8am', '9am', '10am'];
 
+  // Collect all values in batches before writing
+  let batchValues: Array<{ eventId: number; date: string; value: string }> = [];
+
   for (let i = 0; i < totalDays; i++) {
     const date = format(subDays(today, i), 'yyyy-MM-dd');
 
-    // Update progress every batch
-    if (i % batchSize === 0) {
+    // Write batch and update progress
+    if (i > 0 && i % batchSize === 0) {
       const progress = 10 + Math.floor((i / totalDays) * 80);
-      const daysProcessed = i;
-      const message = `Generating data: ${daysProcessed}/${totalDays} days...`;
+      const message = `Saving data: ${i}/${totalDays} days...`;
       if (onProgress) onProgress(progress, message);
+
+      // Write the batch
+      await webDb.batchSetEventValues(batchValues);
+      batchValues = [];
+
       // Allow UI to update
       await new Promise(resolve => setTimeout(resolve, 0));
     }
@@ -176,21 +183,29 @@ export async function addSampleData(onProgress?: (progress: number, message: str
     const workoutChance = wokeUpEarly ? 0.6 : goodDay ? 0.4 : 0.2;
     const workout = Math.random() < workoutChance ? 30 + Math.random() * 60 : 0; // 0 or 30-90 minutes
 
-    // Insert values using webDb
-    await webDb.setEventValue(insertedEvents[0].id, date, sleep.toFixed(1));
-    await webDb.setEventValue(insertedEvents[1].id, date, goodDay.toString());
-    await webDb.setEventValue(insertedEvents[2].id, date, wentOutside.toString());
-    await webDb.setEventValue(insertedEvents[3].id, date, ran.toFixed(0));
-    await webDb.setEventValue(insertedEvents[4].id, date, drankCoffee.toString());
-    await webDb.setEventValue(insertedEvents[5].id, date, drankTea.toString());
-    await webDb.setEventValue(insertedEvents[6].id, date, romance.toFixed(1));
-    await webDb.setEventValue(insertedEvents[7].id, date, watchedMovie.toString());
-    await webDb.setEventValue(insertedEvents[8].id, date, watchedKoreanDrama.toString());
-    await webDb.setEventValue(insertedEvents[9].id, date, dressColor);
-    await webDb.setEventValue(insertedEvents[10].id, date, wakeUpTime);
-    await webDb.setEventValue(insertedEvents[11].id, date, workout.toFixed(0));
+    // Add values to batch instead of writing immediately
+    batchValues.push(
+      { eventId: insertedEvents[0].id, date, value: sleep.toFixed(1) },
+      { eventId: insertedEvents[1].id, date, value: goodDay.toString() },
+      { eventId: insertedEvents[2].id, date, value: wentOutside.toString() },
+      { eventId: insertedEvents[3].id, date, value: ran.toFixed(0) },
+      { eventId: insertedEvents[4].id, date, value: drankCoffee.toString() },
+      { eventId: insertedEvents[5].id, date, value: drankTea.toString() },
+      { eventId: insertedEvents[6].id, date, value: romance.toFixed(1) },
+      { eventId: insertedEvents[7].id, date, value: watchedMovie.toString() },
+      { eventId: insertedEvents[8].id, date, value: watchedKoreanDrama.toString() },
+      { eventId: insertedEvents[9].id, date, value: dressColor },
+      { eventId: insertedEvents[10].id, date, value: wakeUpTime },
+      { eventId: insertedEvents[11].id, date, value: workout.toFixed(0) }
+    );
 
     dataPointCount += 12;
+  }
+
+  // Write any remaining values
+  if (batchValues.length > 0) {
+    if (onProgress) onProgress(90, 'Saving final batch...');
+    await webDb.batchSetEventValues(batchValues);
   }
 
   console.log(`Added ${dataPointCount} data points`);
