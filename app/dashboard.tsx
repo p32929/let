@@ -584,9 +584,10 @@ export default function DashboardScreen() {
   };
 
   const CombinedChart = () => {
-    // Mobile-only hooks
-    const chartPressState = Platform.OS !== 'web' ? useChartPressState({ x: 0, y: {} }).state : null;
-    const isActive = Platform.OS !== 'web' ? useChartPressState({ x: 0, y: {} }).isActive : false;
+    // Call hooks unconditionally (React rules)
+    const mobileChartPress = Platform.OS !== 'web' ? useChartPressState({ x: 0, y: {} }) : { state: null, isActive: false };
+    const chartPressState = mobileChartPress.state;
+    const isActive = mobileChartPress.isActive;
 
     // Web-only tooltip state
     const [webTooltip, setWebTooltip] = React.useState<{ active?: boolean; payload?: any; label?: string } | null>(null);
