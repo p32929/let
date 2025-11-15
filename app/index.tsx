@@ -24,7 +24,6 @@ export default function HomeScreen() {
   const [loadingProgress, setLoadingProgress] = React.useState(0);
   const [loadingMessage, setLoadingMessage] = React.useState('');
   const [showMenu, setShowMenu] = React.useState(false);
-  const [showDatePicker, setShowDatePicker] = React.useState(false);
   const [showImportDialog, setShowImportDialog] = React.useState(false);
   const [showResetDialog, setShowResetDialog] = React.useState(false);
   const [importingData, setImportingData] = React.useState(false);
@@ -193,10 +192,18 @@ export default function HomeScreen() {
   };
 
   const handleDateSelect = (dateString: string) => {
+    if (!dateString) return;
     const selectedDate = new Date(dateString);
     setCurrentWeekDate(selectedDate);
     setSelectedDate(selectedDate);
-    setShowDatePicker(false);
+  };
+
+  const handleOpenDatePicker = () => {
+    // @ts-ignore - web only
+    if (typeof document !== 'undefined') {
+      const input = document.getElementById('date-picker-input');
+      input?.click();
+    }
   };
 
   // Swipe gesture for week navigation
@@ -270,14 +277,21 @@ export default function HomeScreen() {
                 <Icon as={ChevronLeftIcon} className="size-5" />
               </Button>
               <Pressable
-                onPress={() => setShowDatePicker(true)}
-                className="flex-row items-center gap-2"
+                onPress={handleOpenDatePicker}
+                className="flex-1 items-center"
               >
-                <Icon as={CalendarIcon} className="size-4 text-muted-foreground" />
                 <Text className="text-lg font-semibold">
                   {formatDate(weekDays[0], 'MMM d')} - {formatDate(weekDays[6], 'MMM d, yyyy')}
                 </Text>
               </Pressable>
+              {/* Hidden date input */}
+              <input
+                id="date-picker-input"
+                type="date"
+                onChange={(e) => handleDateSelect(e.target.value)}
+                value={formatDate(currentWeekDate, 'yyyy-MM-dd')}
+                style={{ display: 'none' }}
+              />
               <Button
                 size="icon"
                 variant="ghost"
@@ -487,51 +501,6 @@ export default function HomeScreen() {
             <Text className="text-xs text-muted-foreground text-center mt-4">
               This may take a minute... Generating 7,300 data points
             </Text>
-          </View>
-        </View>
-      )}
-
-      {/* Date Picker Dialog */}
-      {showDatePicker && (
-        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
-          <Pressable
-            className="absolute inset-0 bg-transparent"
-            onPress={() => setShowDatePicker(false)}
-          />
-          <View className="bg-card border border-border rounded-lg p-6 max-w-md w-full">
-            <Text className="text-xl font-bold mb-4">Jump to Date</Text>
-            <Text className="text-sm text-muted-foreground mb-4">
-              Select a date to view that week
-            </Text>
-
-            {/* HTML5 Date Input */}
-            <input
-              type="date"
-              onChange={(e) => handleDateSelect(e.target.value)}
-              defaultValue={formatDate(currentWeekDate, 'yyyy-MM-dd')}
-              className="w-full p-3 rounded-lg border-2 border-border bg-background text-foreground mb-4"
-              style={{
-                colorScheme: colorScheme === 'dark' ? 'dark' : 'light',
-              }}
-            />
-
-            {/* Quick Jump Buttons */}
-            <View className="gap-2">
-              <Button
-                variant="outline"
-                onPress={() => handleDateSelect(formatDate(new Date(), 'yyyy-MM-dd'))}
-                className="w-full"
-              >
-                <Text>Today</Text>
-              </Button>
-              <Button
-                variant="outline"
-                onPress={() => setShowDatePicker(false)}
-                className="w-full"
-              >
-                <Text>Cancel</Text>
-              </Button>
-            </View>
           </View>
         </View>
       )}
