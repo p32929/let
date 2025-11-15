@@ -24,7 +24,6 @@ export default function HomeScreen() {
   const [loadingProgress, setLoadingProgress] = React.useState(0);
   const [loadingMessage, setLoadingMessage] = React.useState('');
   const [showMenu, setShowMenu] = React.useState(false);
-  const [showDatePicker, setShowDatePicker] = React.useState(false);
   const [showImportDialog, setShowImportDialog] = React.useState(false);
   const [showResetDialog, setShowResetDialog] = React.useState(false);
   const [importingData, setImportingData] = React.useState(false);
@@ -196,7 +195,34 @@ export default function HomeScreen() {
     const selectedDate = new Date(dateString);
     setCurrentWeekDate(selectedDate);
     setSelectedDate(selectedDate);
-    setShowDatePicker(false);
+  };
+
+  const handleOpenDatePicker = () => {
+    // @ts-ignore - web only
+    if (typeof document !== 'undefined') {
+      const input = document.createElement('input');
+      input.type = 'date';
+      input.value = formatDate(currentWeekDate, 'yyyy-MM-dd');
+      input.style.position = 'absolute';
+      input.style.opacity = '0';
+      input.style.pointerEvents = 'none';
+
+      input.onchange = (e: any) => {
+        handleDateSelect(e.target.value);
+        document.body.removeChild(input);
+      };
+
+      input.onblur = () => {
+        setTimeout(() => {
+          if (document.body.contains(input)) {
+            document.body.removeChild(input);
+          }
+        }, 100);
+      };
+
+      document.body.appendChild(input);
+      input.showPicker();
+    }
   };
 
   // Swipe gesture for week navigation
@@ -270,7 +296,7 @@ export default function HomeScreen() {
                 <Icon as={ChevronLeftIcon} className="size-5" />
               </Button>
               <Pressable
-                onPress={() => setShowDatePicker(true)}
+                onPress={handleOpenDatePicker}
                 className="flex-1 items-center"
               >
                 <Text className="text-lg font-semibold">
@@ -486,35 +512,6 @@ export default function HomeScreen() {
             <Text className="text-xs text-muted-foreground text-center mt-4">
               This may take a minute... Generating 7,300 data points
             </Text>
-          </View>
-        </View>
-      )}
-
-      {/* Date Picker Dialog */}
-      {showDatePicker && (
-        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
-          <Pressable
-            className="absolute inset-0 bg-transparent"
-            onPress={() => setShowDatePicker(false)}
-          />
-          <View className="bg-card border border-border rounded-lg overflow-hidden max-w-sm w-full">
-            {/* Hidden native date input that triggers on mount */}
-            <input
-              type="date"
-              onChange={(e) => handleDateSelect(e.target.value)}
-              defaultValue={formatDate(currentWeekDate, 'yyyy-MM-dd')}
-              autoFocus
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                opacity: 0,
-                cursor: 'pointer',
-              }}
-              onBlur={() => setShowDatePicker(false)}
-            />
           </View>
         </View>
       )}
