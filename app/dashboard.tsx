@@ -9,8 +9,8 @@ import { format, subDays, parseISO } from 'date-fns';
 import type { Event } from '@/types/events';
 
 // Platform-specific imports
-let CartesianChart: any, Line: any, useChartPressState: any, Circle: any, useFont: any, Group: any, RoundedRect: any, SkiaText: any, vec: any;
 let LineChart: any, ResponsiveContainer: any, XAxis: any, YAxis: any, Tooltip: any, Legend: any, RechartsLine: any;
+let ChartLineChart: any;
 
 if (Platform.OS === 'web') {
   // Recharts for web
@@ -23,18 +23,9 @@ if (Platform.OS === 'web') {
   Legend = recharts.Legend;
   RechartsLine = recharts.Line;
 } else {
-  // Victory Native for mobile
-  const victoryNative = require('victory-native');
-  const skia = require('@shopify/react-native-skia');
-  CartesianChart = victoryNative.CartesianChart;
-  Line = victoryNative.Line;
-  useChartPressState = victoryNative.useChartPressState;
-  Circle = skia.Circle;
-  useFont = skia.useFont;
-  Group = skia.Group;
-  RoundedRect = skia.RoundedRect;
-  SkiaText = skia.Text;
-  vec = skia.vec;
+  // react-native-chart-kit for mobile
+  const chartKit = require('react-native-chart-kit');
+  ChartLineChart = chartKit.LineChart;
 }
 
 const screenWidth = Dimensions.get('window').width;
@@ -588,9 +579,17 @@ export default function DashboardScreen() {
   };
 
   const CombinedChart = () => {
-    // Calculate data BEFORE hooks (no conditional returns before hooks!)
+    // State for mobile tooltip
+    const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number; visible: boolean; data: any } | null>(null);
+
+    // Calculate data
     const numericEvents = chartData.filter((d) => d.event.type !== 'string' && d.dataPoints.length > 0);
     const stringEvents = chartData.filter((d) => d.event.type === 'string' && d.dataPoints.length > 0);
+
+    // Check if we should render
+    if (chartData.length === 0 || (numericEvents.length === 0 && stringEvents.length === 0)) {
+      return null;
+    }
 
     // Get all unique dates from both numeric and string events
     const allDates = Array.from(
@@ -662,52 +661,6 @@ export default function DashboardScreen() {
       return dataPoint;
     });
 
-    // Calculate chart width based on number of data points for scrolling
-    const dataPointsCount = combinedChartData.length;
-    const minChartWidth = screenWidth - 64; // Account for padding
-    const chartWidth = Math.max(minChartWidth, dataPointsCount * 3); // 3px per data point minimum
-
-    // Hooks AFTER all data is prepared
-    const { state, isActive } = Platform.OS !== 'web' && useChartPressState
-      ? useChartPressState({ x: 0, y: {} })
-      : { state: null, isActive: false };
-
-    const [lastTouchedData, setLastTouchedData] = React.useState<{ date: string; values: Record<string, number> } | null>(null);
-
-    React.useEffect(() => {
-      if (isActive && state && combinedChartData.length > 0) {
-        console.log('[TOOLTIP DEBUG] Touch detected!', {
-          isActive,
-          hasState: !!state,
-          stateXValue: state.x?.value,
-          dataLength: combinedChartData.length,
-          stateYKeys: state.y ? Object.keys(state.y) : []
-        });
-
-        const dataIndex = Math.round(state.x.value as any);
-        console.log('[TOOLTIP DEBUG] Data index:', dataIndex, 'Data at index:', combinedChartData[dataIndex]);
-
-        const date = combinedChartData[dataIndex]?.date || 'N/A';
-        const values: Record<string, number> = {};
-
-        [...numericEvents, ...stringEvents].forEach(({ event }) => {
-          const value = (state.y as any)[event.name]?.value;
-          console.log(`[TOOLTIP DEBUG] Event ${event.name}: value =`, value);
-          if (value !== undefined) {
-            values[event.name] = value;
-          }
-        });
-
-        console.log('[TOOLTIP DEBUG] Setting tooltip data:', { date, values });
-        setLastTouchedData({ date, values });
-      }
-    }, [isActive, state, combinedChartData, numericEvents, stringEvents]);
-
-    // Check if we should render
-    if (chartData.length === 0 || (numericEvents.length === 0 && stringEvents.length === 0)) {
-      return null;
-    }
-
     return (
       <View className="bg-card border border-border rounded-lg p-4 mb-4">
         <Text className="font-semibold text-lg mb-2">All Events Combined</Text>
@@ -736,7 +689,7 @@ export default function DashboardScreen() {
                   <XAxis dataKey="date" stroke="#888" fontSize={10} />
                   <YAxis stroke="#888" fontSize={10} domain={[0, 100]} />
                   <Tooltip
-                    content={({ active, payload, label }) => {
+                    content={({ active, payload, label }: any) => {
                       if (active && payload && payload.length) {
                         return (
                           <View className="p-3 bg-card border border-border rounded-lg">
@@ -774,76 +727,113 @@ export default function DashboardScreen() {
               </ResponsiveContainer>
             </View>
           ) : (
-            // Mobile: Use Victory Native
-            <>
-              <View style={{ height: 250, width: '100%' }}>
-                <CartesianChart
-                  data={combinedChartData}
-                  xKey="date"
-                  yKeys={[...numericEvents, ...stringEvents].map(({ event }) => event.name)}
-                  domainPadding={{ left: 20, right: 20, top: 20, bottom: 20 }}
-                  chartPressState={state}
-                >
-                  {({ points }) => (
-                    <>
-                      {[...numericEvents, ...stringEvents].map(({ event }) => (
-                        <Line
-                          key={event.id}
-                          points={points[event.name]}
-                          color={event.color}
-                          strokeWidth={2}
-                          animate={{ type: 'timing', duration: 300 }}
-                        />
-                      ))}
-                      {/* Show tooltip on press */}
-                      {isActive && state && (
-                        <>
+            // Mobile: Use react-native-chart-kit
+            <View>
+              <ScrollView horizontal showsHorizontalScrollIndicator>
+                <ChartLineChart
+                  data={{
+                    labels: combinedChartData.map(d => d.date),
+                    datasets: [...numericEvents, ...stringEvents].map(({ event }) => ({
+                      data: combinedChartData.map(d => d[event.name] || 0),
+                      color: (opacity = 1) => event.color,
+                      strokeWidth: 2,
+                    })),
+                    legend: [...numericEvents, ...stringEvents].map(({ event }) => event.name)
+                  }}
+                  width={Math.max(screenWidth - 32, combinedChartData.length * 50)}
+                  height={250}
+                  chartConfig={{
+                    backgroundColor: '#1e1e1e',
+                    backgroundGradientFrom: '#1e1e1e',
+                    backgroundGradientTo: '#1e1e1e',
+                    decimalPlaces: 1,
+                    color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+                    labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity * 0.7})`,
+                    style: {
+                      borderRadius: 16
+                    },
+                    propsForDots: {
+                      r: "4",
+                      strokeWidth: "2",
+                    }
+                  }}
+                  bezier
+                  style={{
+                    marginVertical: 8,
+                    borderRadius: 16
+                  }}
+                  decorator={() => {
+                    // Show tooltip decorator
+                    if (tooltipPos && tooltipPos.visible) {
+                      return (
+                        <View
+                          style={{
+                            position: 'absolute',
+                            left: tooltipPos.x - 75,
+                            top: tooltipPos.y - 120,
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: '#333',
+                            minWidth: 150,
+                          }}
+                        >
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold', marginBottom: 4 }}>
+                            {tooltipPos.data.date}
+                          </Text>
                           {[...numericEvents, ...stringEvents].map(({ event }) => {
-                            const point = (state.y as any)[event.name];
-                            if (!point) return null;
+                            const value = tooltipPos.data[event.name];
+                            if (value === undefined || value === null) return null;
                             return (
-                              <Circle
-                                key={`tooltip-${event.id}`}
-                                cx={state.x.position}
-                                cy={point.position}
-                                r={6}
-                                color={event.color}
-                                opacity={0.8}
-                              />
+                              <View key={event.id} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                                <View
+                                  style={{
+                                    width: 8,
+                                    height: 8,
+                                    borderRadius: 4,
+                                    backgroundColor: event.color,
+                                    marginRight: 6,
+                                  }}
+                                />
+                                <Text style={{ color: '#fff', fontSize: 11 }}>
+                                  {event.name}: {value.toFixed(1)}%
+                                </Text>
+                              </View>
                             );
                           })}
-                        </>
-                      )}
-                    </>
-                  )}
-                </CartesianChart>
-              </View>
+                        </View>
+                      );
+                    }
+                    return null;
+                  }}
+                  onDataPointClick={(data: any) => {
+                    // Show tooltip on click
+                    const dataPoint = combinedChartData[data.index];
+                    if (dataPoint) {
+                      setTooltipPos({
+                        x: data.x,
+                        y: data.y,
+                        visible: true,
+                        data: dataPoint,
+                      });
+                    }
+                  }}
+                />
+              </ScrollView>
 
-              {/* Tooltip information for mobile - shows last touched point */}
-              {lastTouchedData && (
-                <View className="mt-2 p-3 bg-card border border-border rounded-lg">
-                  <Text className="text-sm font-semibold mb-1">
-                    {lastTouchedData.date}
+              {/* Tap anywhere to hide tooltip */}
+              {tooltipPos && tooltipPos.visible && (
+                <View style={{ marginTop: 8 }}>
+                  <Text
+                    style={{ color: '#888', fontSize: 11, textAlign: 'center', fontStyle: 'italic' }}
+                    onPress={() => setTooltipPos(null)}
+                  >
+                    Tap here to hide tooltip
                   </Text>
-                  {[...numericEvents, ...stringEvents].map(({ event }) => {
-                    const value = lastTouchedData.values[event.name];
-                    if (value === undefined) return null;
-                    return (
-                      <View key={event.id} className="flex-row items-center mt-1">
-                        <View
-                          className="w-3 h-3 rounded-full mr-2"
-                          style={{ backgroundColor: event.color }}
-                        />
-                        <Text className="text-xs">
-                          {event.name}: {value.toFixed(1)}%
-                          {event.unit && ` (${event.unit})`}
-                        </Text>
-                      </View>
-                    );
-                  })}
                 </View>
               )}
-            </>
+            </View>
           )}
         </View>
 
