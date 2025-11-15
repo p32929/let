@@ -584,42 +584,9 @@ export default function DashboardScreen() {
   };
 
   const CombinedChart = () => {
-    // Always call hooks unconditionally (React rules) - Victory Native will be undefined on web
-    const { state, isActive } = Platform.OS !== 'web' && useChartPressState
-      ? useChartPressState({ x: 0, y: {} })
-      : { state: null, isActive: false };
-
-    // Keep track of last touched point for mobile
-    const [lastTouchedData, setLastTouchedData] = React.useState<{ date: string; values: Record<string, number> } | null>(null);
-
-    // Update last touched data when chart is pressed
-    React.useEffect(() => {
-      if (isActive && state) {
-        const dataIndex = Math.round(state.x.value as any);
-        const date = combinedChartData[dataIndex]?.date || 'N/A';
-        const values: Record<string, number> = {};
-
-        [...numericEvents, ...stringEvents].forEach(({ event }) => {
-          const value = (state.y as any)[event.name]?.value;
-          if (value !== undefined) {
-            values[event.name] = value;
-          }
-        });
-
-        setLastTouchedData({ date, values });
-      }
-    }, [isActive, state]);
-
-    // Web-only tooltip state
-    const [webTooltip, setWebTooltip] = React.useState<{ active?: boolean; payload?: any; label?: string } | null>(null);
-
-    if (chartData.length === 0) return null;
-
-    // Get numeric and string events separately
+    // Calculate data BEFORE hooks (no conditional returns before hooks!)
     const numericEvents = chartData.filter((d) => d.event.type !== 'string' && d.dataPoints.length > 0);
     const stringEvents = chartData.filter((d) => d.event.type === 'string' && d.dataPoints.length > 0);
-
-    if (numericEvents.length === 0 && stringEvents.length === 0) return null;
 
     // Get all unique dates from both numeric and string events
     const allDates = Array.from(
@@ -695,6 +662,35 @@ export default function DashboardScreen() {
     const dataPointsCount = combinedChartData.length;
     const minChartWidth = screenWidth - 64; // Account for padding
     const chartWidth = Math.max(minChartWidth, dataPointsCount * 3); // 3px per data point minimum
+
+    // Hooks AFTER all data is prepared
+    const { state, isActive } = Platform.OS !== 'web' && useChartPressState
+      ? useChartPressState({ x: 0, y: {} })
+      : { state: null, isActive: false };
+
+    const [lastTouchedData, setLastTouchedData] = React.useState<{ date: string; values: Record<string, number> } | null>(null);
+
+    React.useEffect(() => {
+      if (isActive && state && combinedChartData.length > 0) {
+        const dataIndex = Math.round(state.x.value as any);
+        const date = combinedChartData[dataIndex]?.date || 'N/A';
+        const values: Record<string, number> = {};
+
+        [...numericEvents, ...stringEvents].forEach(({ event }) => {
+          const value = (state.y as any)[event.name]?.value;
+          if (value !== undefined) {
+            values[event.name] = value;
+          }
+        });
+
+        setLastTouchedData({ date, values });
+      }
+    }, [isActive, state, combinedChartData, numericEvents, stringEvents]);
+
+    // Check if we should render
+    if (chartData.length === 0 || (numericEvents.length === 0 && stringEvents.length === 0)) {
+      return null;
+    }
 
     return (
       <View className="bg-card border border-border rounded-lg p-4 mb-4">
