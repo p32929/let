@@ -731,8 +731,7 @@ export default function DashboardScreen() {
                       data: combinedChartData.map(d => d[event.name] || 0),
                       color: (_opacity = 1) => event.color,
                       strokeWidth: 2,
-                    })),
-                    legend: [...numericEvents, ...stringEvents].map(({ event }) => event.name)
+                    }))
                   }}
                   width={Math.max(screenWidth - 32, combinedChartData.length * 50)}
                   height={250}
