@@ -4,7 +4,7 @@ import { Text } from '@/components/ui/text';
 import { Stack, router } from 'expo-router';
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon } from 'lucide-react-native';
 import * as React from 'react';
-import { View, ScrollView, Pressable } from 'react-native';
+import { View, ScrollView, Pressable, Platform } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
 import { useColorScheme } from 'nativewind';
@@ -15,7 +15,7 @@ import { EventTracker } from '@/components/event-tracker';
 import { addSampleData } from '@/lib/sample-data';
 import { getEventValuesForDateRange } from '@/db/operations/events';
 import { exportData, importData, downloadExportFile, readImportFile } from '@/lib/import-export';
-import { webDb } from '@/db/client.web';
+import { getEvents as dbGetEvents, deleteEvent } from '@/db/operations/events';
 import { Calendar } from '@/components/ui/calendar';
 
 export default function HomeScreen() {
@@ -131,9 +131,10 @@ export default function HomeScreen() {
   const handleResetAllData = async () => {
     try {
       setShowResetDialog(false);
-      const existingEvents = await webDb.getEvents();
+      const { getEvents: dbGetEvents, deleteEvent } = await import('@/db/operations/events');
+      const existingEvents = await dbGetEvents();
       for (const event of existingEvents) {
-        await webDb.deleteEvent(event.id);
+        await deleteEvent(event.id);
       }
       await loadEvents();
     } catch (error) {
@@ -201,10 +202,15 @@ export default function HomeScreen() {
 
   // Swipe gesture for week navigation
   const panGesture = Gesture.Pan()
+    .activeOffsetX([-10, 10]) // Only activate after 10px horizontal movement
+    .failOffsetY([-10, 10]) // Fail if vertical movement is detected
     .onUpdate((event) => {
-      translateX.value = event.translationX;
-      // Reduce opacity as user swipes
-      opacity.value = 1 - Math.abs(event.translationX) / 400;
+      // Only update if horizontal movement is greater than vertical
+      if (Math.abs(event.translationX) > Math.abs(event.translationY)) {
+        translateX.value = event.translationX;
+        // Reduce opacity as user swipes
+        opacity.value = 1 - Math.abs(event.translationX) / 400;
+      }
     })
     .onEnd((event) => {
       const threshold = 50; // Minimum swipe distance
@@ -256,10 +262,9 @@ export default function HomeScreen() {
           ),
         }}
       />
-      <GestureDetector gesture={panGesture}>
-        <Animated.View style={[{ flex: 1 }, animatedStyle]} className="bg-background">
+      <View className="flex-1 bg-white dark:bg-[#0a0a0a]">
+        <View className="border-b border-[#e5e5e5] dark:border-[#262626] p-4">
           {/* Week Navigation */}
-          <View className="border-b border-border p-4">
             <View className="flex-row items-center justify-between mb-4">
               <Button
                 size="icon"
@@ -273,7 +278,7 @@ export default function HomeScreen() {
                 onPress={() => setShowCalendar(true)}
                 className="flex-1 items-center"
               >
-                <Text className="text-lg font-semibold">
+                <Text className="text-lg font-semibold text-[#0a0a0a] dark:text-[#fafafa]">
                   {formatDate(weekDays[0], 'MMM d')} - {formatDate(weekDays[6], 'MMM d, yyyy')}
                 </Text>
               </Pressable>
@@ -303,19 +308,19 @@ export default function HomeScreen() {
                     onPress={() => !isFuture && handleDaySelect(day)}
                     disabled={isFuture}
                     className={`items-center justify-center rounded-lg p-2 flex-1 mx-0.5 relative ${
-                      selected ? 'bg-primary' : today ? 'bg-muted' : ''
+                      selected ? 'bg-[#171717] dark:bg-[#fafafa]' : today ? 'bg-[#f5f5f5] dark:bg-[#262626]' : ''
                     } ${isFuture ? 'opacity-40' : ''}`}
                   >
                     <Text
                       className={`text-xs ${
-                        selected ? 'text-primary-foreground' : 'text-muted-foreground'
+                        selected ? 'text-[#fafafa] dark:text-[#171717]' : 'text-[#737373] dark:text-[#a3a3a3]'
                       }`}
                     >
                       {getDayName(day)}
                     </Text>
                     <Text
                       className={`text-lg font-semibold ${
-                        selected ? 'text-primary-foreground' : today ? 'text-foreground' : 'text-foreground'
+                        selected ? 'text-[#fafafa] dark:text-[#171717]' : 'text-[#0a0a0a] dark:text-[#fafafa]'
                       }`}
                     >
                       {formatDate(day, 'd')}
@@ -326,16 +331,23 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          {/* Events List */}
-          <ScrollView className="flex-1 p-4">
+        {/* Events List */}
+        <ScrollView
+            className="flex-1 p-4"
+            showsVerticalScrollIndicator={false}
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={true}
+            nestedScrollEnabled={true}
+            contentContainerStyle={{ paddingBottom: 24 }}
+          >
             {isLoading ? (
               <View className="items-center justify-center py-8">
-                <Text className="text-muted-foreground">Loading events...</Text>
+                <Text className="text-[#737373] dark:text-[#a3a3a3]">Loading events...</Text>
               </View>
             ) : events.length === 0 ? (
               <View className="items-center justify-center py-12">
-                <Text className="text-center text-muted-foreground mb-2">No events yet</Text>
-                <Text className="text-center text-sm text-muted-foreground">
+                <Text className="text-center text-[#737373] dark:text-[#a3a3a3] mb-2">No events yet</Text>
+                <Text className="text-center text-sm text-[#737373] dark:text-[#a3a3a3]">
                   Tap the + button to create your first event
                 </Text>
               </View>
@@ -347,8 +359,7 @@ export default function HomeScreen() {
               </View>
             )}
           </ScrollView>
-        </Animated.View>
-      </GestureDetector>
+        </View>
 
       {/* Popup Menu */}
       {showMenu && (
@@ -358,7 +369,7 @@ export default function HomeScreen() {
             onPress={() => setShowMenu(false)}
           />
           <View
-            className="absolute bg-card border border-border rounded-lg shadow-2xl overflow-hidden"
+            className="absolute bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg shadow-2xl overflow-hidden"
             style={{
               top: 12,
               right: 16,
@@ -367,64 +378,64 @@ export default function HomeScreen() {
             }}
           >
             <Pressable
-              className="flex-row items-center px-4 py-3 border-b border-border hover:bg-muted/50 active:bg-muted"
+              className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
               onPress={() => {
                 setShowMenu(false);
                 router.push('/dashboard' as any);
               }}
             >
-              <Icon as={BarChart3Icon} className="size-5 mr-3 text-foreground" />
-              <Text className="text-base text-foreground">Dashboard</Text>
+              <Icon as={BarChart3Icon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
+              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Dashboard</Text>
             </Pressable>
             <Pressable
-              className="flex-row items-center px-4 py-3 border-b border-border hover:bg-muted/50 active:bg-muted"
+              className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
               onPress={() => {
                 setShowMenu(false);
                 router.push('/reorder-events' as any);
               }}
             >
-              <Icon as={ArrowUpDownIcon} className="size-5 mr-3 text-foreground" />
-              <Text className="text-base text-foreground">Reorder Events</Text>
+              <Icon as={ArrowUpDownIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
+              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Reorder Events</Text>
             </Pressable>
             <Pressable
-              className="flex-row items-center px-4 py-3 border-b border-border hover:bg-muted/50 active:bg-muted"
+              className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
               onPress={handleExportData}
             >
-              <Icon as={DownloadIcon} className="size-5 mr-3 text-foreground" />
-              <Text className="text-base text-foreground">Export Data</Text>
+              <Icon as={DownloadIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
+              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Export Data</Text>
             </Pressable>
             <Pressable
-              className="flex-row items-center px-4 py-3 border-b border-border hover:bg-muted/50 active:bg-muted"
+              className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
               onPress={handleOpenImportDialog}
             >
-              <Icon as={UploadIcon} className="size-5 mr-3 text-foreground" />
-              <Text className="text-base text-foreground">Import Data</Text>
+              <Icon as={UploadIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
+              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Import Data</Text>
             </Pressable>
             <Pressable
-              className="flex-row items-center px-4 py-3 border-b border-border hover:bg-muted/50 active:bg-muted"
+              className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
               onPress={handleLoadSampleData}
             >
-              <Icon as={DatabaseIcon} className="size-5 mr-3 text-foreground" />
-              <Text className="text-base text-foreground">Load Sample Data</Text>
+              <Icon as={DatabaseIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
+              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Load Sample Data</Text>
             </Pressable>
             <Pressable
-              className="flex-row items-center px-4 py-3 border-b border-border hover:bg-muted/50 active:bg-muted"
+              className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
               onPress={() => {
                 setShowMenu(false);
                 setShowResetDialog(true);
               }}
             >
-              <Icon as={TrashIcon} className="size-5 mr-3 text-destructive" />
-              <Text className="text-base text-destructive">Reset All Data</Text>
+              <Icon as={TrashIcon} className="size-5 mr-3 text-[#ef4444] dark:text-[#dc2626]" />
+              <Text className="text-base text-[#ef4444] dark:text-[#dc2626]">Reset All Data</Text>
             </Pressable>
             <Pressable
-              className="flex-row items-center px-4 py-3 hover:bg-muted/50 active:bg-muted"
+              className="flex-row items-center px-4 py-3 hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
               onPress={() => {
                 setColorScheme(colorScheme === 'dark' ? 'light' : 'dark');
               }}
             >
-              <Icon as={colorScheme === 'dark' ? SunIcon : MoonIcon} className="size-5 mr-3 text-foreground" />
-              <Text className="text-base text-foreground">{colorScheme === 'dark' ? 'Light Mode' : 'Dark Mode'}</Text>
+              <Icon as={colorScheme === 'dark' ? SunIcon : MoonIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
+              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">{colorScheme === 'dark' ? 'Light Mode' : 'Dark Mode'}</Text>
             </Pressable>
           </View>
         </View>
@@ -433,9 +444,9 @@ export default function HomeScreen() {
       {/* Reset Confirmation Dialog */}
       {showResetDialog && (
         <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
-          <View className="bg-card border border-border rounded-lg p-6 max-w-md w-full">
-            <Text className="text-xl font-bold mb-2">Reset All Data?</Text>
-            <Text className="text-muted-foreground mb-4">
+          <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
+            <Text className="text-xl font-bold mb-2 text-[#0a0a0a] dark:text-[#fafafa]">Reset All Data?</Text>
+            <Text className="text-[#737373] dark:text-[#a3a3a3] mb-4">
               This will permanently delete all events and tracking data. This action cannot be undone.
             </Text>
             <View className="flex-row gap-3">
@@ -461,29 +472,29 @@ export default function HomeScreen() {
       {/* Loading Progress Overlay */}
       {loadingSampleData && (
         <View className="absolute inset-0 bg-black/70 items-center justify-center p-4">
-          <View className="bg-card border border-border rounded-lg p-6 max-w-md w-full">
-            <Text className="text-xl font-bold mb-4 text-center">Loading Sample Data</Text>
+          <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
+            <Text className="text-xl font-bold mb-4 text-center text-[#0a0a0a] dark:text-[#fafafa]">Loading Sample Data</Text>
 
             {/* Progress Bar */}
             <View className="mb-4">
-              <View className="h-3 bg-muted rounded-full overflow-hidden">
+              <View className="h-3 bg-[#f5f5f5] dark:bg-[#262626] rounded-full overflow-hidden">
                 <View
-                  className="h-full bg-primary transition-all duration-300"
+                  className="h-full bg-[#171717] dark:bg-[#fafafa] transition-all duration-300"
                   style={{ width: `${loadingProgress}%` }}
                 />
               </View>
             </View>
 
             {/* Progress Text */}
-            <Text className="text-center text-muted-foreground mb-2">
+            <Text className="text-center text-[#737373] dark:text-[#a3a3a3] mb-2">
               {loadingProgress}% Complete
             </Text>
-            <Text className="text-center text-sm text-muted-foreground">
+            <Text className="text-center text-sm text-[#737373] dark:text-[#a3a3a3]">
               {loadingMessage}
             </Text>
 
             {/* Additional Info */}
-            <Text className="text-xs text-muted-foreground text-center mt-4">
+            <Text className="text-xs text-[#737373] dark:text-[#a3a3a3] text-center mt-4">
               This may take a minute... Generating 7,300 data points
             </Text>
           </View>
@@ -510,9 +521,9 @@ export default function HomeScreen() {
       {/* Import Dialog */}
       {showImportDialog && (
         <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
-          <View className="bg-card border border-border rounded-lg p-6 max-w-md w-full">
-            <Text className="text-xl font-bold mb-2">Import Data</Text>
-            <Text className="text-muted-foreground mb-4">
+          <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
+            <Text className="text-xl font-bold mb-2 text-[#0a0a0a] dark:text-[#fafafa]">Import Data</Text>
+            <Text className="text-[#737373] dark:text-[#a3a3a3] mb-4">
               Upload a backup file to restore your events, tracking data, and settings.
             </Text>
 
@@ -520,21 +531,21 @@ export default function HomeScreen() {
               <>
                 {/* Clear Existing Data Checkbox */}
                 <Pressable
-                  className="flex-row items-center mb-4 p-3 rounded-lg bg-muted/30"
+                  className="flex-row items-center mb-4 p-3 rounded-lg bg-[#f5f5f5]/30 dark:bg-[#262626]/30"
                   onPress={() => setClearExisting(!clearExisting)}
                 >
                   <View
                     className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${
-                      clearExisting ? 'bg-primary border-primary' : 'border-muted-foreground'
+                      clearExisting ? 'bg-[#171717] dark:bg-[#fafafa] border-[#171717] dark:border-[#fafafa]' : 'border-[#737373] dark:border-[#a3a3a3]'
                     }`}
                   >
                     {clearExisting && (
-                      <Icon as={CheckCircleIcon} className="size-3 text-primary-foreground" />
+                      <Icon as={CheckCircleIcon} className="size-3 text-[#fafafa] dark:text-[#171717]" />
                     )}
                   </View>
                   <View className="flex-1">
-                    <Text className="font-medium">Clear existing data</Text>
-                    <Text className="text-xs text-muted-foreground">
+                    <Text className="font-medium text-[#0a0a0a] dark:text-[#fafafa]">Clear existing data</Text>
+                    <Text className="text-xs text-[#737373] dark:text-[#a3a3a3]">
                       Delete all current events before importing
                     </Text>
                   </View>
@@ -542,24 +553,29 @@ export default function HomeScreen() {
 
                 {/* File Input */}
                 <View className="mb-4">
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={handleImportFile}
-                    style={{ display: 'none' }}
-                    id="import-file-input"
-                  />
+                  {Platform.OS === 'web' && (
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleImportFile}
+                      style={{ display: 'none' }}
+                      id="import-file-input"
+                    />
+                  )}
                   <Button
                     onPress={() => {
-                      // @ts-ignore - web only
-                      if (typeof document !== 'undefined') {
+                      if (Platform.OS === 'web') {
+                        // @ts-ignore - web only
                         document.getElementById('import-file-input')?.click();
+                      } else {
+                        // TODO: Implement file picker for mobile
+                        console.log('File import not yet supported on mobile');
                       }
                     }}
                     className="w-full"
                   >
                     <Icon as={UploadIcon} className="size-4 mr-2" />
-                    <Text>Choose File</Text>
+                    <Text>Choose File{Platform.OS !== 'web' ? ' (Web Only)' : ''}</Text>
                   </Button>
                 </View>
 
@@ -578,19 +594,19 @@ export default function HomeScreen() {
               <>
                 {/* Progress Bar */}
                 <View className="mb-4">
-                  <View className="h-3 bg-muted rounded-full overflow-hidden">
+                  <View className="h-3 bg-[#f5f5f5] dark:bg-[#262626] rounded-full overflow-hidden">
                     <View
-                      className="h-full bg-primary transition-all duration-300"
+                      className="h-full bg-[#171717] dark:bg-[#fafafa] transition-all duration-300"
                       style={{ width: `${importProgress}%` }}
                     />
                   </View>
                 </View>
 
                 {/* Progress Text */}
-                <Text className="text-center text-muted-foreground mb-2">
+                <Text className="text-center text-[#737373] dark:text-[#a3a3a3] mb-2">
                   {importProgress}% Complete
                 </Text>
-                <Text className="text-center text-sm text-muted-foreground">
+                <Text className="text-center text-sm text-[#737373] dark:text-[#a3a3a3]">
                   {importMessage}
                 </Text>
               </>

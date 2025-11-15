@@ -90,10 +90,10 @@ export function EventTracker({ event, date }: EventTrackerProps) {
   if (isLoading) {
     return (
       <View
-        className="bg-card border border-border rounded-lg p-4"
+        className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4"
         style={{ borderLeftWidth: 4, borderLeftColor: event.color }}
       >
-        <Text className="text-muted-foreground">Loading...</Text>
+        <Text className="text-[#737373] dark:text-[#a3a3a3]">Loading...</Text>
       </View>
     );
   }
@@ -105,12 +105,12 @@ export function EventTracker({ event, date }: EventTrackerProps) {
     : value.trim() !== '';
 
   return (
-    <View className="bg-card border border-border rounded-lg p-3 flex-row items-center" style={{ borderLeftWidth: 4, borderLeftColor: event.color }}>
+    <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-3 flex-row items-center" style={{ borderLeftWidth: 4, borderLeftColor: event.color }}>
       {/* Event Name */}
       <View className="flex-1 mr-3">
-        <Text className="font-semibold text-base">{event.name}</Text>
+        <Text className="font-semibold text-base text-[#0a0a0a] dark:text-[#fafafa]">{event.name}</Text>
         {event.unit && (
-          <Text className="text-xs text-muted-foreground">{event.unit}</Text>
+          <Text className="text-xs text-[#737373] dark:text-[#a3a3a3]">{event.unit}</Text>
         )}
       </View>
 
@@ -171,7 +171,7 @@ export function EventTracker({ event, date }: EventTrackerProps) {
           onPress={() => router.push({ pathname: '/edit-event' as any, params: { id: event.id.toString() } })}
           className="h-10 w-10"
         >
-          <Icon as={Settings2Icon} className="size-4 text-muted-foreground" />
+          <Icon as={Settings2Icon} className="size-4 text-[#737373] dark:text-[#a3a3a3]" />
         </Button>
       </View>
     </View>

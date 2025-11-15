@@ -47,12 +47,27 @@ export default function RootLayout() {
   }, [systemColorScheme]);
 
   const activeColorScheme = colorScheme ?? systemColorScheme ?? 'light';
+  const isDark = activeColorScheme === 'dark';
+
+  console.log('[Theme] Current scheme:', { activeColorScheme, isDark, colorScheme, systemColorScheme });
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView
+      style={{ flex: 1, backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }}
+    >
       <ThemeProvider value={NAV_THEME[activeColorScheme]}>
-        <StatusBar style={activeColorScheme === 'dark' ? 'light' : 'dark'} />
-        <Stack />
+        <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={isDark ? '#0a0a0a' : '#ffffff'} />
+        <Stack
+          screenOptions={{
+            headerStyle: {
+              backgroundColor: isDark ? '#0a0a0a' : '#ffffff',
+            },
+            headerTintColor: isDark ? '#fafafa' : '#0a0a0a',
+            contentStyle: {
+              backgroundColor: isDark ? '#0a0a0a' : '#ffffff',
+            },
+          }}
+        />
         <PortalHost />
       </ThemeProvider>
     </GestureHandlerRootView>

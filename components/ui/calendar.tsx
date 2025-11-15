@@ -79,7 +79,7 @@ export function Calendar({ selectedDate, onSelectDate, onClose }: CalendarProps)
   const days = getDaysInMonth(currentMonth);
 
   return (
-    <View className="bg-card rounded-lg p-4 border border-border">
+    <View className="bg-white dark:bg-[#0a0a0a] rounded-lg p-4 border border-[#e5e5e5] dark:border-[#262626]">
       {/* Header */}
       <View className="flex-row items-center justify-between mb-4">
         <Button
@@ -90,7 +90,7 @@ export function Calendar({ selectedDate, onSelectDate, onClose }: CalendarProps)
         >
           <Icon as={ChevronLeftIcon} className="size-5" />
         </Button>
-        <Text className="text-lg font-semibold">
+        <Text className="text-lg font-semibold text-[#0a0a0a] dark:text-[#fafafa]">
           {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
         </Text>
         <Button
@@ -107,7 +107,7 @@ export function Calendar({ selectedDate, onSelectDate, onClose }: CalendarProps)
       <View className="flex-row mb-2">
         {dayNames.map((day) => (
           <View key={day} className="flex-1 items-center">
-            <Text className="text-xs text-muted-foreground font-medium">{day}</Text>
+            <Text className="text-xs text-[#737373] dark:text-[#a3a3a3] font-medium">{day}</Text>
           </View>
         ))}
       </View>
@@ -130,19 +130,19 @@ export function Calendar({ selectedDate, onSelectDate, onClose }: CalendarProps)
                   onPress={() => handleSelectDate(date)}
                   className={`flex-1 aspect-square items-center justify-center rounded-lg ${
                     selected
-                      ? 'bg-primary'
+                      ? 'bg-[#171717] dark:bg-[#fafafa]'
                       : today
-                        ? 'bg-muted'
+                        ? 'bg-[#f5f5f5] dark:bg-[#262626]'
                         : ''
                   }`}
                 >
                   <Text
                     className={`text-sm ${
                       selected
-                        ? 'text-primary-foreground font-bold'
+                        ? 'text-[#fafafa] dark:text-[#171717] font-bold'
                         : today
-                          ? 'text-foreground font-semibold'
-                          : 'text-foreground'
+                          ? 'text-[#0a0a0a] dark:text-[#fafafa] font-semibold'
+                          : 'text-[#0a0a0a] dark:text-[#fafafa]'
                     }`}
                   >
                     {date.getDate()}

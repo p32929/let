@@ -1,4 +1,4 @@
-import { webDb } from '@/db/client.web';
+import { getEvents, getEventValuesForDate } from '@/db/operations/events';
 import type { Event } from '@/types/events';
 import { storage } from './storage';
 
@@ -23,10 +23,10 @@ export interface ExportData {
  */
 export async function exportData(): Promise<ExportData> {
   // Get all events
-  const events = await webDb.getEvents();
+  const events = await getEvents();
 
-  // Get all event values
-  const values = await webDb.getAllEventValues();
+  // Get all event values (pass empty string to get all)
+  const values = await getEventValuesForDate('');
   const allEventValues = values.map((v) => ({
     eventId: v.eventId,
     date: v.date,
@@ -75,12 +75,15 @@ export async function importData(data: ExportData, options: {
       throw new Error('Invalid export file format');
     }
 
+    // Import needed operations
+    const { createEvent, deleteEvent, setEventValue } = await import('@/db/operations/events');
+
     // Clear existing data if requested
     if (clearExisting) {
       onProgress?.(10, 'Clearing existing data...');
-      const existingEvents = await webDb.getEvents();
+      const existingEvents = await getEvents();
       for (const event of existingEvents) {
-        await webDb.deleteEvent(event.id);
+        await deleteEvent(event.id);
       }
     }
 
@@ -95,10 +98,10 @@ export async function importData(data: ExportData, options: {
       const oldId = eventData.id;
 
       // Create event without ID (let DB assign new one)
-      const newEvent = await webDb.createEvent({
+      const newEvent = await createEvent({
         name: eventData.name,
         type: eventData.type,
-        unit: eventData.unit,
+        unit: eventData.unit ?? undefined,
         color: eventData.color,
       });
 
@@ -123,7 +126,7 @@ export async function importData(data: ExportData, options: {
         batch.map(async (valueData) => {
           const newEventId = idMapping[valueData.eventId];
           if (newEventId) {
-            await webDb.setEventValue(newEventId, valueData.date, valueData.value);
+            await setEventValue(newEventId, valueData.date, valueData.value);
           }
         })
       );

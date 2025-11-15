@@ -123,11 +123,20 @@ export async function getEventValuesForDateRange(eventId: number, startDate: str
 }
 
 export async function getEventValuesForDate(date: string) {
+  // If empty string, return all values
+  if (date === '') {
+    return db.select().from(eventValues).orderBy(asc(eventValues.eventId));
+  }
+
   return db
     .select()
     .from(eventValues)
     .where(eq(eventValues.date, date))
     .orderBy(asc(eventValues.eventId));
+}
+
+export async function getAllEventValues() {
+  return db.select().from(eventValues).orderBy(asc(eventValues.eventId));
 }
 
 export async function deleteEventValue(eventId: number, date: string) {

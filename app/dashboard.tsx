@@ -2,11 +2,12 @@ import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { Stack } from 'expo-router';
 import * as React from 'react';
-import { View, ScrollView, Dimensions } from 'react-native';
+import { View, ScrollView, Dimensions, Platform } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getEventValuesForDateRange } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart } from 'react-native-svg-charts';
+import * as shape from 'd3-shape';
 import type { Event } from '@/types/events';
 
 const screenWidth = Dimensions.get('window').width;
@@ -49,7 +50,7 @@ export default function DashboardScreen() {
       setIsLoading(true);
       try {
         const endDate = new Date();
-        const startDate = subDays(endDate, 730); // Always load 2 years for patterns
+        const startDate = subDays(endDate, 365); // Load 1 year instead of 2 for faster performance
         const startStr = format(startDate, 'yyyy-MM-dd');
         const endStr = format(endDate, 'yyyy-MM-dd');
 
@@ -69,22 +70,25 @@ export default function DashboardScreen() {
 
         const allData = await Promise.all(dataPromises);
         setEventData(allData);
+        setIsLoading(false);
 
-        // Discover patterns from ALL data with loading state
+        // Discover patterns from ALL data with loading state - run AFTER UI is ready
         setIsAnalyzingPatterns(true);
-        setTimeout(() => {
-          try {
-            const discoveredPatterns = discoverPatterns(allData);
-            setPatterns(discoveredPatterns);
-          } catch (error) {
-            console.error('Failed to discover patterns:', error);
-          } finally {
-            setIsAnalyzingPatterns(false);
-          }
-        }, 100); // Small delay to ensure UI updates
+        // Use requestAnimationFrame for better performance
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            try {
+              const discoveredPatterns = discoverPatterns(allData);
+              setPatterns(discoveredPatterns);
+            } catch (error) {
+              console.error('Failed to discover patterns:', error);
+            } finally {
+              setIsAnalyzingPatterns(false);
+            }
+          }, 500); // Longer delay to let charts render first
+        });
       } catch (error) {
         console.error('Failed to analyze patterns:', error);
-      } finally {
         setIsLoading(false);
       }
     };
@@ -124,11 +128,16 @@ export default function DashboardScreen() {
 
     if (allData.length < 2) return patterns;
 
+    // PERFORMANCE OPTIMIZATION: Limit analysis when there are too many events
+    const MAX_PATTERNS = 50; // Stop after finding 50 patterns to avoid UI lag
+    const shouldLimitAnalysis = allData.length > 10; // Use simpler analysis for >10 events
+
     // COMPREHENSIVE PATTERN DISCOVERY FOR MAXIMUM PREDICTIVE VALUE
     // Goal: Find ALL meaningful patterns with as many correlated events as possible
 
     // 1. STRING-BASED PATTERNS: For each string value, analyze ALL other events
     for (const { event: stringEvent, dataPoints: stringData } of stringEvents) {
+      if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
       if (stringData.length < 1) continue;
 
       // Find all unique string values
@@ -144,6 +153,7 @@ export default function DashboardScreen() {
         .map(([value]) => value);
 
       for (const value of allValues) {
+        if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
         // Find days with this string value
         const matchingDates = stringData
           .filter(d => String(d.value).trim().toLowerCase() === value)
@@ -273,6 +283,7 @@ export default function DashboardScreen() {
 
     // 2. BOOLEAN-BASED PATTERNS: When a boolean is true/false, what else happens?
     for (const { event: boolEvent, dataPoints: boolData } of booleanEvents) {
+      if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
       if (boolData.length < 1) continue;
 
       // Days when boolean is true
@@ -293,6 +304,7 @@ export default function DashboardScreen() {
 
       // Check number events
       for (const { event: numEvent, dataPoints: numData } of numberEvents) {
+        if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
         const trueValues = trueDates
           .map(date => numData.find(d => d.date === date))
           .filter(d => d && typeof d.value === 'number')
@@ -332,6 +344,7 @@ export default function DashboardScreen() {
 
       // Check other boolean events
       for (const { event: otherBool, dataPoints: otherData } of booleanEvents) {
+        if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
         if (otherBool.id === boolEvent.id) continue;
 
         const trueValues = trueDates
@@ -389,6 +402,7 @@ export default function DashboardScreen() {
 
       // Check string events
       for (const { event: strEvent, dataPoints: strData } of stringEvents) {
+        if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
         const trueStrValues = trueDates
           .map(date => strData.find(d => d.date === date))
           .filter(d => d && typeof d.value === 'string')
@@ -423,6 +437,7 @@ export default function DashboardScreen() {
 
     // 3. NUMBER THRESHOLD PATTERNS: High/low values and their correlations
     for (const { event: numEvent, dataPoints: numData } of numberEvents) {
+      if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
       const numericValues = numData
         .filter(d => typeof d.value === 'number')
         .map(d => ({ date: d.date, value: d.value as number }));
@@ -452,6 +467,7 @@ export default function DashboardScreen() {
 
       // Check other number events
       for (const { event: otherNum, dataPoints: otherData } of numberEvents) {
+        if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
         if (otherNum.id === numEvent.id) continue;
 
         const highValues = highDates
@@ -480,6 +496,7 @@ export default function DashboardScreen() {
 
       // Check boolean events
       for (const { event: boolEv, dataPoints: boolDt } of booleanEvents) {
+        if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
         const highBools = highDates
           .map(date => boolDt.find(d => d.date === date))
           .filter(d => d && typeof d.value === 'number')
@@ -634,73 +651,62 @@ export default function DashboardScreen() {
           Normalized view to see patterns (scrollable){stringEvents.length > 0 ? ' • Dashed lines = text events' : ''}
         </Text>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={true} className="mb-2">
-          <View style={{ width: chartWidth, height: 300 }}>
-            <ResponsiveContainer width={chartWidth} height={300}>
-              <LineChart data={combinedChartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                <XAxis
-                  dataKey="date"
-                  stroke="#999"
-                  tick={{ fill: '#999', fontSize: 10 }}
-                  angle={-45}
-                  textAnchor="end"
-                  height={60}
-                />
-                <YAxis
-                  stroke="#999"
-                  tick={{ fill: '#999', fontSize: 12 }}
-                  label={{ value: 'Normalized %', angle: -90, position: 'insideLeft', fill: '#999' }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#1a1a1a',
-                    border: '1px solid #333',
-                    borderRadius: 8,
-                  }}
-                  labelStyle={{ color: '#999' }}
-                  itemStyle={{ color: '#fff' }}
-                  formatter={(value: any, name: string, props: any) => {
-                    // Check if this is a string event
-                    const isStringEvent = stringEvents.some(e => e.event.name === name);
-                    if (isStringEvent && props.payload[`${name}_original`]) {
-                      return [props.payload[`${name}_original`], name];
-                    }
-                    // For numeric events, show original value with unit
-                    if (props.payload[`${name}_original`] !== undefined) {
-                      const event = [...numericEvents, ...stringEvents].find(e => e.event.name === name);
-                      const unit = event?.event.unit ? ` ${event.event.unit}` : '';
-                      return [`${props.payload[`${name}_original`]}${unit}`, name];
-                    }
-                    return [value, name];
-                  }}
-                />
-                <Legend wrapperStyle={{ color: '#999' }} />
-                {numericEvents.map(({ event }) => (
-                  <Line
-                    key={event.id}
-                    type="monotone"
-                    dataKey={event.name}
-                    stroke={event.color}
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                ))}
-                {stringEvents.map(({ event }) => (
-                  <Line
-                    key={event.id}
-                    type="stepAfter"
-                    dataKey={event.name}
-                    stroke={event.color}
-                    strokeWidth={3}
-                    strokeDasharray="5 5"
-                    dot={{ r: 4, fill: event.color }}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
+        <View className="mb-4">
+          {/* Legend showing all events */}
+          <View className="flex-row flex-wrap mb-3">
+            {[...numericEvents, ...stringEvents].map(({ event }) => (
+              <View key={event.id} className="flex-row items-center mr-4 mb-2">
+                <View style={{ width: 12, height: 12, backgroundColor: event.color, marginRight: 6, borderRadius: 6 }} />
+                <Text className="text-xs">{event.name}</Text>
+                {event.unit && <Text className="text-xs text-muted-foreground ml-1">({event.unit})</Text>}
+              </View>
+            ))}
           </View>
-        </ScrollView>
+
+          {/* Combined chart with all lines */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={Platform.OS === 'web'}
+            style={{ height: 250 }}
+            contentContainerStyle={{ minWidth: '100%' }}
+          >
+            <View style={{ height: 250, width: chartWidth, position: 'relative' }}>
+              {[...numericEvents, ...stringEvents].map(({ event, dataPoints }, index) => {
+                // Normalize data to 0-100 scale
+                const values = dataPoints.map((d) => {
+                  if (typeof d.value === 'number') return d.value;
+                  // For string events, use the normalized position from combinedChartData
+                  const point = combinedChartData.find(cd => cd.fullDate === d.date);
+                  return point?.[event.name] || 0;
+                });
+
+                const min = Math.min(...values.filter(v => typeof v === 'number'));
+                const max = Math.max(...values.filter(v => typeof v === 'number'));
+                const range = max - min || 1;
+                const normalizedData = values.map(v =>
+                  typeof v === 'number' ? ((v - min) / range) * 100 : 0
+                );
+
+                return (
+                  <LineChart
+                    key={event.id}
+                    style={{
+                      height: 250,
+                      width: chartWidth,
+                      position: index === 0 ? 'relative' : 'absolute',
+                      top: 0,
+                      left: 0,
+                    }}
+                    data={normalizedData}
+                    svg={{ stroke: event.color, strokeWidth: 2 }}
+                    contentInset={{ top: 20, bottom: 20 }}
+                    curve={shape.curveNatural}
+                  />
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
 
         <Text className="text-xs text-muted-foreground mt-3">
           * Values normalized to 0-100% scale for visual comparison. Scroll horizontally to see all data points!

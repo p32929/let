@@ -14,28 +14,28 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: cn(
-          'bg-primary active:bg-primary/90 shadow-sm shadow-black/5',
-          Platform.select({ web: 'hover:bg-primary/90' })
+          'bg-[#171717] dark:bg-[#fafafa] active:bg-[#171717]/90 dark:active:bg-[#fafafa]/90 shadow-sm shadow-black/5',
+          Platform.select({ web: 'hover:bg-[#171717]/90 dark:hover:bg-[#fafafa]/90' })
         ),
         destructive: cn(
-          'bg-destructive active:bg-destructive/90 dark:bg-destructive/60 shadow-sm shadow-black/5',
+          'bg-[#ef4444] dark:bg-[#dc2626] active:bg-[#ef4444]/90 dark:active:bg-[#dc2626]/90 shadow-sm shadow-black/5',
           Platform.select({
-            web: 'hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40',
+            web: 'hover:bg-[#ef4444]/90 dark:hover:bg-[#dc2626]/90',
           })
         ),
         outline: cn(
-          'border-border bg-background active:bg-accent dark:bg-input/30 dark:border-input dark:active:bg-input/50 border shadow-sm shadow-black/5',
+          'border-[#e5e5e5] dark:border-[#262626] bg-white dark:bg-[#0a0a0a] active:bg-[#f5f5f5] dark:active:bg-[#262626] border shadow-sm shadow-black/5',
           Platform.select({
-            web: 'hover:bg-accent dark:hover:bg-input/50',
+            web: 'hover:bg-[#f5f5f5] dark:hover:bg-[#262626]',
           })
         ),
         secondary: cn(
-          'bg-secondary active:bg-secondary/80 shadow-sm shadow-black/5',
-          Platform.select({ web: 'hover:bg-secondary/80' })
+          'bg-[#f5f5f5] dark:bg-[#262626] active:bg-[#f5f5f5]/80 dark:active:bg-[#262626]/80 shadow-sm shadow-black/5',
+          Platform.select({ web: 'hover:bg-[#f5f5f5]/80 dark:hover:bg-[#262626]/80' })
         ),
         ghost: cn(
-          'active:bg-accent dark:active:bg-accent/50',
-          Platform.select({ web: 'hover:bg-accent dark:hover:bg-accent/50' })
+          'active:bg-[#f5f5f5] dark:active:bg-[#262626]',
+          Platform.select({ web: 'hover:bg-[#f5f5f5] dark:hover:bg-[#262626]' })
         ),
         link: '',
       },
@@ -61,16 +61,16 @@ const buttonTextVariants = cva(
   {
     variants: {
       variant: {
-        default: 'text-primary-foreground',
+        default: 'text-[#fafafa] dark:text-[#171717]',
         destructive: 'text-white',
         outline: cn(
-          'group-active:text-accent-foreground',
-          Platform.select({ web: 'group-hover:text-accent-foreground' })
+          'text-[#0a0a0a] dark:text-[#fafafa] group-active:text-[#171717] dark:group-active:text-[#fafafa]',
+          Platform.select({ web: 'group-hover:text-[#171717] dark:group-hover:text-[#fafafa]' })
         ),
-        secondary: 'text-secondary-foreground',
-        ghost: 'group-active:text-accent-foreground',
+        secondary: 'text-[#171717] dark:text-[#fafafa]',
+        ghost: 'text-[#0a0a0a] dark:text-[#fafafa] group-active:text-[#171717] dark:group-active:text-[#fafafa]',
         link: cn(
-          'text-primary group-active:underline',
+          'text-[#171717] dark:text-[#fafafa] group-active:underline',
           Platform.select({ web: 'underline-offset-4 hover:underline group-hover:underline' })
         ),
       },
