@@ -24,6 +24,7 @@ export default function HomeScreen() {
   const [loadingProgress, setLoadingProgress] = React.useState(0);
   const [loadingMessage, setLoadingMessage] = React.useState('');
   const [showMenu, setShowMenu] = React.useState(false);
+  const [showDatePicker, setShowDatePicker] = React.useState(false);
   const [showImportDialog, setShowImportDialog] = React.useState(false);
   const [showResetDialog, setShowResetDialog] = React.useState(false);
   const [importingData, setImportingData] = React.useState(false);
@@ -192,18 +193,10 @@ export default function HomeScreen() {
   };
 
   const handleDateSelect = (dateString: string) => {
-    if (!dateString) return;
     const selectedDate = new Date(dateString);
     setCurrentWeekDate(selectedDate);
     setSelectedDate(selectedDate);
-  };
-
-  const handleOpenDatePicker = () => {
-    // @ts-ignore - web only
-    if (typeof document !== 'undefined') {
-      const input = document.getElementById('date-picker-input');
-      input?.click();
-    }
+    setShowDatePicker(false);
   };
 
   // Swipe gesture for week navigation
@@ -277,21 +270,13 @@ export default function HomeScreen() {
                 <Icon as={ChevronLeftIcon} className="size-5" />
               </Button>
               <Pressable
-                onPress={handleOpenDatePicker}
+                onPress={() => setShowDatePicker(true)}
                 className="flex-1 items-center"
               >
                 <Text className="text-lg font-semibold">
                   {formatDate(weekDays[0], 'MMM d')} - {formatDate(weekDays[6], 'MMM d, yyyy')}
                 </Text>
               </Pressable>
-              {/* Hidden date input */}
-              <input
-                id="date-picker-input"
-                type="date"
-                onChange={(e) => handleDateSelect(e.target.value)}
-                value={formatDate(currentWeekDate, 'yyyy-MM-dd')}
-                style={{ display: 'none' }}
-              />
               <Button
                 size="icon"
                 variant="ghost"
@@ -501,6 +486,35 @@ export default function HomeScreen() {
             <Text className="text-xs text-muted-foreground text-center mt-4">
               This may take a minute... Generating 7,300 data points
             </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Date Picker Dialog */}
+      {showDatePicker && (
+        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
+          <Pressable
+            className="absolute inset-0 bg-transparent"
+            onPress={() => setShowDatePicker(false)}
+          />
+          <View className="bg-card border border-border rounded-lg overflow-hidden max-w-sm w-full">
+            {/* Hidden native date input that triggers on mount */}
+            <input
+              type="date"
+              onChange={(e) => handleDateSelect(e.target.value)}
+              defaultValue={formatDate(currentWeekDate, 'yyyy-MM-dd')}
+              autoFocus
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                opacity: 0,
+                cursor: 'pointer',
+              }}
+              onBlur={() => setShowDatePicker(false)}
+            />
           </View>
         </View>
       )}
