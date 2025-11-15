@@ -124,8 +124,10 @@ export default function DashboardScreen() {
 
     if (allData.length < 2) return patterns;
 
-    // COMPREHENSIVE PATTERN DISCOVERY:
-    // For each string value, analyze ALL numeric/boolean outcomes together
+    // COMPREHENSIVE PATTERN DISCOVERY FOR MAXIMUM PREDICTIVE VALUE
+    // Goal: Find ALL meaningful patterns with as many correlated events as possible
+
+    // 1. STRING-BASED PATTERNS: For each string value, analyze ALL other events
     for (const { event: stringEvent, dataPoints: stringData } of stringEvents) {
       if (stringData.length < 1) continue;
 
@@ -136,12 +138,12 @@ export default function DashboardScreen() {
         if (val) valueFrequency[val] = (valueFrequency[val] || 0) + 1;
       });
 
-      // Analyze each string value
-      const commonValues = Object.entries(valueFrequency)
+      // Analyze each string value that appears at least once
+      const allValues = Object.entries(valueFrequency)
         .filter(([_, count]) => count >= 1)
         .map(([value]) => value);
 
-      for (const value of commonValues) {
+      for (const value of allValues) {
         // Find days with this string value
         const matchingDates = stringData
           .filter(d => String(d.value).trim().toLowerCase() === value)
@@ -149,39 +151,47 @@ export default function DashboardScreen() {
 
         if (matchingDates.length < 1) continue;
 
-        // Analyze all outcomes for this string value
+        // Analyze ALL outcomes for this string value
         const outcomes: string[] = [];
+        const relatedEvents: Event[] = [stringEvent];
 
-        // Check each number event
+        // Other days (for comparison)
+        const otherDates = stringData
+          .filter(d => String(d.value).trim().toLowerCase() !== value && String(d.value).trim() !== '')
+          .map(d => d.date);
+
+        // Check EVERY number event
         for (const { event: numEvent, dataPoints: numData } of numberEvents) {
           const matchingValues = matchingDates
             .map(date => numData.find(d => d.date === date))
             .filter(d => d && typeof d.value === 'number')
             .map(d => d!.value as number);
 
-          const otherDates = stringData
-            .filter(d => String(d.value).trim().toLowerCase() !== value && String(d.value).trim() !== '')
-            .map(d => d.date);
-
-          const otherValues = otherDates
+          const otherValues = otherDates.length > 0 ? otherDates
             .map(date => numData.find(d => d.date === date))
             .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
+            .map(d => d!.value as number) : [];
 
-          if (matchingValues.length > 0 && otherValues.length > 0) {
+          if (matchingValues.length > 0) {
             const avgMatching = matchingValues.reduce((a, b) => a + b, 0) / matchingValues.length;
-            const avgOther = otherValues.reduce((a, b) => a + b, 0) / otherValues.length;
             const minMatching = Math.min(...matchingValues);
             const maxMatching = Math.max(...matchingValues);
             const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
 
-            // Only include if there's a noticeable difference from other values
-            const diff = Math.abs(avgMatching - avgOther);
-            const percentDiff = avgOther > 0 ? (diff / avgOther) * 100 : 0;
+            // Include if there's a difference OR if there's no comparison data
+            let shouldInclude = false;
+            if (otherValues.length > 0) {
+              const avgOther = otherValues.reduce((a, b) => a + b, 0) / otherValues.length;
+              const diff = Math.abs(avgMatching - avgOther);
+              const percentDiff = avgOther > 0 ? (diff / avgOther) * 100 : 0;
+              shouldInclude = percentDiff > 5 || diff > 0.5;
+            } else {
+              // No comparison data, include if value is meaningful (non-zero)
+              shouldInclude = avgMatching > 0.1;
+            }
 
-            // Very lenient threshold - include almost anything
-            if (percentDiff > 5 || diff > 0.5) {
-              // Show range if there's variation, otherwise just the average
+            if (shouldInclude) {
+              relatedEvents.push(numEvent);
               if (maxMatching - minMatching > 0.5) {
                 outcomes.push(`${numEvent.name} of ${minMatching.toFixed(1)} to ${maxMatching.toFixed(1)}${unit}`);
               } else {
@@ -191,69 +201,329 @@ export default function DashboardScreen() {
           }
         }
 
-        // Check each boolean event
+        // Check EVERY boolean event
         for (const { event: boolEvent, dataPoints: boolData } of booleanEvents) {
           const matchingValues = matchingDates
             .map(date => boolData.find(d => d.date === date))
             .filter(d => d && typeof d.value === 'number')
             .map(d => d!.value as number);
 
-          const otherDates = stringData
-            .filter(d => String(d.value).trim().toLowerCase() !== value && String(d.value).trim() !== '')
-            .map(d => d.date);
-
-          const otherValues = otherDates
+          const otherValues = otherDates.length > 0 ? otherDates
             .map(date => boolData.find(d => d.date === date))
             .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
+            .map(d => d!.value as number) : [];
 
-          if (matchingValues.length > 0 && otherValues.length > 0) {
+          if (matchingValues.length > 0) {
             const matchingTrue = matchingValues.filter(v => v > 0.5).length;
             const matchingRate = (matchingTrue / matchingValues.length) * 100;
 
-            const otherTrue = otherValues.filter(v => v > 0.5).length;
-            const otherRate = (otherTrue / otherValues.length) * 100;
+            let shouldInclude = false;
+            let outcomeText = '';
 
-            const diff = matchingRate - otherRate;
-            // Very lenient threshold - show even small differences
-            if (Math.abs(diff) > 10) {
-              if (diff > 0) {
-                // More likely to have this outcome
-                if (matchingRate >= 80) {
-                  outcomes.push(`a ${boolEvent.name}`);
+            if (otherValues.length > 0) {
+              const otherTrue = otherValues.filter(v => v > 0.5).length;
+              const otherRate = (otherTrue / otherValues.length) * 100;
+              const diff = matchingRate - otherRate;
+
+              if (Math.abs(diff) > 10) {
+                shouldInclude = true;
+                relatedEvents.push(boolEvent);
+                if (diff > 0) {
+                  outcomeText = matchingRate >= 80
+                    ? `a ${boolEvent.name}`
+                    : `${boolEvent.name} (${matchingRate.toFixed(0)}% of the time)`;
                 } else {
-                  outcomes.push(`${boolEvent.name} (${matchingRate.toFixed(0)}% of the time)`);
-                }
-              } else {
-                // Less likely to have this outcome
-                if (matchingRate <= 20) {
-                  outcomes.push(`no ${boolEvent.name}`);
-                } else {
-                  outcomes.push(`less ${boolEvent.name} (only ${matchingRate.toFixed(0)}% of the time)`);
+                  outcomeText = matchingRate <= 20
+                    ? `no ${boolEvent.name}`
+                    : `less ${boolEvent.name} (only ${matchingRate.toFixed(0)}% of the time)`;
                 }
               }
+            } else {
+              // No comparison, include if rate is high or low
+              if (matchingRate >= 70) {
+                shouldInclude = true;
+                relatedEvents.push(boolEvent);
+                outcomeText = `a ${boolEvent.name}`;
+              } else if (matchingRate <= 30) {
+                shouldInclude = true;
+                relatedEvents.push(boolEvent);
+                outcomeText = `no ${boolEvent.name}`;
+              }
+            }
+
+            if (shouldInclude && outcomeText) {
+              outcomes.push(outcomeText);
             }
           }
         }
 
-        // Create comprehensive pattern if we have outcomes
+        // Create pattern with ALL correlated events
         if (outcomes.length > 0) {
           const description = `When ${stringEvent.name} is "${value}", you tend to have ${outcomes.join(' and ')}`;
-
           patterns.push({
             description,
-            confidence: Math.min(95, 70 + outcomes.length * 5),
+            confidence: Math.min(95, 65 + outcomes.length * 4),
             type: 'co-occurrence',
-            events: [stringEvent, ...allData.filter(d =>
-              outcomes.some(o => o.includes(d.event.name))
-            ).map(d => d.event)],
+            events: relatedEvents,
           });
         }
       }
     }
 
-    // Sort by confidence and return top patterns
-    return patterns.sort((a, b) => b.confidence - a.confidence).slice(0, 10);
+    // 2. BOOLEAN-BASED PATTERNS: When a boolean is true/false, what else happens?
+    for (const { event: boolEvent, dataPoints: boolData } of booleanEvents) {
+      if (boolData.length < 1) continue;
+
+      // Days when boolean is true
+      const trueDates = boolData
+        .filter(d => typeof d.value === 'number' && d.value > 0.5)
+        .map(d => d.date);
+
+      // Days when boolean is false
+      const falseDates = boolData
+        .filter(d => typeof d.value === 'number' && d.value <= 0.5)
+        .map(d => d.date);
+
+      if (trueDates.length < 1) continue;
+
+      // Analyze what happens when boolean is TRUE
+      const trueOutcomes: string[] = [];
+      const trueRelatedEvents: Event[] = [boolEvent];
+
+      // Check number events
+      for (const { event: numEvent, dataPoints: numData } of numberEvents) {
+        const trueValues = trueDates
+          .map(date => numData.find(d => d.date === date))
+          .filter(d => d && typeof d.value === 'number')
+          .map(d => d!.value as number);
+
+        const falseValues = falseDates.length > 0 ? falseDates
+          .map(date => numData.find(d => d.date === date))
+          .filter(d => d && typeof d.value === 'number')
+          .map(d => d!.value as number) : [];
+
+        if (trueValues.length > 0) {
+          const avgTrue = trueValues.reduce((a, b) => a + b, 0) / trueValues.length;
+          const minTrue = Math.min(...trueValues);
+          const maxTrue = Math.max(...trueValues);
+          const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
+
+          let shouldInclude = false;
+          if (falseValues.length > 0) {
+            const avgFalse = falseValues.reduce((a, b) => a + b, 0) / falseValues.length;
+            const diff = Math.abs(avgTrue - avgFalse);
+            const percentDiff = avgFalse > 0 ? (diff / avgFalse) * 100 : 0;
+            shouldInclude = percentDiff > 5 || diff > 0.5;
+          } else {
+            shouldInclude = avgTrue > 0.1;
+          }
+
+          if (shouldInclude) {
+            trueRelatedEvents.push(numEvent);
+            if (maxTrue - minTrue > 0.5) {
+              trueOutcomes.push(`${numEvent.name} of ${minTrue.toFixed(1)} to ${maxTrue.toFixed(1)}${unit}`);
+            } else {
+              trueOutcomes.push(`${numEvent.name} of about ${avgTrue.toFixed(1)}${unit}`);
+            }
+          }
+        }
+      }
+
+      // Check other boolean events
+      for (const { event: otherBool, dataPoints: otherData } of booleanEvents) {
+        if (otherBool.id === boolEvent.id) continue;
+
+        const trueValues = trueDates
+          .map(date => otherData.find(d => d.date === date))
+          .filter(d => d && typeof d.value === 'number')
+          .map(d => d!.value as number);
+
+        const falseValues = falseDates.length > 0 ? falseDates
+          .map(date => otherData.find(d => d.date === date))
+          .filter(d => d && typeof d.value === 'number')
+          .map(d => d!.value as number) : [];
+
+        if (trueValues.length > 0) {
+          const trueTrue = trueValues.filter(v => v > 0.5).length;
+          const trueRate = (trueTrue / trueValues.length) * 100;
+
+          let shouldInclude = false;
+          let outcomeText = '';
+
+          if (falseValues.length > 0) {
+            const falseTrue = falseValues.filter(v => v > 0.5).length;
+            const falseRate = (falseTrue / falseValues.length) * 100;
+            const diff = trueRate - falseRate;
+
+            if (Math.abs(diff) > 10) {
+              shouldInclude = true;
+              trueRelatedEvents.push(otherBool);
+              if (diff > 0) {
+                outcomeText = trueRate >= 80
+                  ? `a ${otherBool.name}`
+                  : `${otherBool.name} (${trueRate.toFixed(0)}% of the time)`;
+              } else {
+                outcomeText = trueRate <= 20
+                  ? `no ${otherBool.name}`
+                  : `less ${otherBool.name} (only ${trueRate.toFixed(0)}% of the time)`;
+              }
+            }
+          } else {
+            if (trueRate >= 70) {
+              shouldInclude = true;
+              trueRelatedEvents.push(otherBool);
+              outcomeText = `a ${otherBool.name}`;
+            } else if (trueRate <= 30) {
+              shouldInclude = true;
+              trueRelatedEvents.push(otherBool);
+              outcomeText = `no ${otherBool.name}`;
+            }
+          }
+
+          if (shouldInclude && outcomeText) {
+            trueOutcomes.push(outcomeText);
+          }
+        }
+      }
+
+      // Check string events
+      for (const { event: strEvent, dataPoints: strData } of stringEvents) {
+        const trueStrValues = trueDates
+          .map(date => strData.find(d => d.date === date))
+          .filter(d => d && typeof d.value === 'string')
+          .map(d => String(d!.value).trim().toLowerCase())
+          .filter(v => v);
+
+        if (trueStrValues.length > 0) {
+          // Find most common string value when boolean is true
+          const freq: Record<string, number> = {};
+          trueStrValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
+          const mostCommon = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+
+          if (mostCommon && mostCommon[1] / trueStrValues.length >= 0.5) {
+            trueRelatedEvents.push(strEvent);
+            trueOutcomes.push(`${strEvent.name} of "${mostCommon[0]}" (${((mostCommon[1] / trueStrValues.length) * 100).toFixed(0)}% of the time)`);
+          }
+        }
+      }
+
+      if (trueOutcomes.length > 0) {
+        const description = `When you have a ${boolEvent.name}, you tend to have ${trueOutcomes.join(' and ')}`;
+        patterns.push({
+          description,
+          confidence: Math.min(95, 65 + trueOutcomes.length * 4),
+          type: 'co-occurrence',
+          events: trueRelatedEvents,
+        });
+      }
+    }
+
+    // 3. NUMBER THRESHOLD PATTERNS: High/low values and their correlations
+    for (const { event: numEvent, dataPoints: numData } of numberEvents) {
+      const numericValues = numData
+        .filter(d => typeof d.value === 'number')
+        .map(d => ({ date: d.date, value: d.value as number }));
+
+      if (numericValues.length < 2) continue;
+
+      const values = numericValues.map(d => d.value);
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      const max = Math.max(...values);
+      const min = Math.min(...values);
+
+      // Skip if no variation
+      if (max - min < 0.5) continue;
+
+      // Define "high" as above average
+      const threshold = avg;
+      const highDates = numericValues.filter(d => d.value > threshold).map(d => d.date);
+      const lowDates = numericValues.filter(d => d.value <= threshold).map(d => d.date);
+
+      if (highDates.length < 1 || lowDates.length < 1) continue;
+
+      const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
+
+      // HIGH pattern
+      const highOutcomes: string[] = [];
+      const highRelatedEvents: Event[] = [numEvent];
+
+      // Check other number events
+      for (const { event: otherNum, dataPoints: otherData } of numberEvents) {
+        if (otherNum.id === numEvent.id) continue;
+
+        const highValues = highDates
+          .map(date => otherData.find(d => d.date === date))
+          .filter(d => d && typeof d.value === 'number')
+          .map(d => d!.value as number);
+
+        const lowValues = lowDates
+          .map(date => otherData.find(d => d.date === date))
+          .filter(d => d && typeof d.value === 'number')
+          .map(d => d!.value as number);
+
+        if (highValues.length > 0 && lowValues.length > 0) {
+          const avgHigh = highValues.reduce((a, b) => a + b, 0) / highValues.length;
+          const avgLow = lowValues.reduce((a, b) => a + b, 0) / lowValues.length;
+          const diff = Math.abs(avgHigh - avgLow);
+          const percentDiff = avgLow > 0 ? (diff / avgLow) * 100 : 0;
+
+          if (percentDiff > 5 || diff > 0.5) {
+            highRelatedEvents.push(otherNum);
+            const otherUnit = otherNum.unit ? ` ${otherNum.unit}` : '';
+            highOutcomes.push(`${otherNum.name} of about ${avgHigh.toFixed(1)}${otherUnit}`);
+          }
+        }
+      }
+
+      // Check boolean events
+      for (const { event: boolEv, dataPoints: boolDt } of booleanEvents) {
+        const highBools = highDates
+          .map(date => boolDt.find(d => d.date === date))
+          .filter(d => d && typeof d.value === 'number')
+          .map(d => d!.value as number);
+
+        const lowBools = lowDates
+          .map(date => boolDt.find(d => d.date === date))
+          .filter(d => d && typeof d.value === 'number')
+          .map(d => d!.value as number);
+
+        if (highBools.length > 0 && lowBools.length > 0) {
+          const highRate = (highBools.filter(v => v > 0.5).length / highBools.length) * 100;
+          const lowRate = (lowBools.filter(v => v > 0.5).length / lowBools.length) * 100;
+          const diff = highRate - lowRate;
+
+          if (Math.abs(diff) > 10) {
+            highRelatedEvents.push(boolEv);
+            if (diff > 0) {
+              const text = highRate >= 80 ? `a ${boolEv.name}` : `${boolEv.name} (${highRate.toFixed(0)}% of the time)`;
+              highOutcomes.push(text);
+            } else {
+              const text = highRate <= 20 ? `no ${boolEv.name}` : `less ${boolEv.name} (only ${highRate.toFixed(0)}% of the time)`;
+              highOutcomes.push(text);
+            }
+          }
+        }
+      }
+
+      if (highOutcomes.length > 0) {
+        const avgHigh = highDates
+          .map(date => numData.find(d => d.date === date))
+          .filter(d => d && typeof d.value === 'number')
+          .map(d => d!.value as number)
+          .reduce((a, b) => a + b, 0) / highDates.length;
+
+        const description = `When you have high ${numEvent.name} (above ${threshold.toFixed(1)}${unit}, avg ${avgHigh.toFixed(1)}${unit}), you tend to have ${highOutcomes.join(' and ')}`;
+        patterns.push({
+          description,
+          confidence: Math.min(95, 65 + highOutcomes.length * 4),
+          type: 'threshold',
+          events: highRelatedEvents,
+        });
+      }
+    }
+
+    // Return ALL patterns sorted by confidence (no limit!)
+    return patterns.sort((a, b) => b.confidence - a.confidence);
   };
 
 
