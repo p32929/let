@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Stack, router } from 'expo-router';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon } from 'lucide-react-native';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon } from 'lucide-react-native';
 import * as React from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -24,6 +24,7 @@ export default function HomeScreen() {
   const [loadingProgress, setLoadingProgress] = React.useState(0);
   const [loadingMessage, setLoadingMessage] = React.useState('');
   const [showMenu, setShowMenu] = React.useState(false);
+  const [showDatePicker, setShowDatePicker] = React.useState(false);
   const [showImportDialog, setShowImportDialog] = React.useState(false);
   const [showResetDialog, setShowResetDialog] = React.useState(false);
   const [importingData, setImportingData] = React.useState(false);
@@ -191,6 +192,13 @@ export default function HomeScreen() {
     setShowImportDialog(true);
   };
 
+  const handleDateSelect = (dateString: string) => {
+    const selectedDate = new Date(dateString);
+    setCurrentWeekDate(selectedDate);
+    setSelectedDate(selectedDate);
+    setShowDatePicker(false);
+  };
+
   // Swipe gesture for week navigation
   const panGesture = Gesture.Pan()
     .onUpdate((event) => {
@@ -261,9 +269,15 @@ export default function HomeScreen() {
               >
                 <Icon as={ChevronLeftIcon} className="size-5" />
               </Button>
-              <Text className="text-lg font-semibold">
-                {formatDate(weekDays[0], 'MMM d')} - {formatDate(weekDays[6], 'MMM d, yyyy')}
-              </Text>
+              <Pressable
+                onPress={() => setShowDatePicker(true)}
+                className="flex-row items-center gap-2"
+              >
+                <Icon as={CalendarIcon} className="size-4 text-muted-foreground" />
+                <Text className="text-lg font-semibold">
+                  {formatDate(weekDays[0], 'MMM d')} - {formatDate(weekDays[6], 'MMM d, yyyy')}
+                </Text>
+              </Pressable>
               <Button
                 size="icon"
                 variant="ghost"
@@ -473,6 +487,51 @@ export default function HomeScreen() {
             <Text className="text-xs text-muted-foreground text-center mt-4">
               This may take a minute... Generating 7,300 data points
             </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Date Picker Dialog */}
+      {showDatePicker && (
+        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
+          <Pressable
+            className="absolute inset-0 bg-transparent"
+            onPress={() => setShowDatePicker(false)}
+          />
+          <View className="bg-card border border-border rounded-lg p-6 max-w-md w-full">
+            <Text className="text-xl font-bold mb-4">Jump to Date</Text>
+            <Text className="text-sm text-muted-foreground mb-4">
+              Select a date to view that week
+            </Text>
+
+            {/* HTML5 Date Input */}
+            <input
+              type="date"
+              onChange={(e) => handleDateSelect(e.target.value)}
+              defaultValue={formatDate(currentWeekDate, 'yyyy-MM-dd')}
+              className="w-full p-3 rounded-lg border-2 border-border bg-background text-foreground mb-4"
+              style={{
+                colorScheme: colorScheme === 'dark' ? 'dark' : 'light',
+              }}
+            />
+
+            {/* Quick Jump Buttons */}
+            <View className="gap-2">
+              <Button
+                variant="outline"
+                onPress={() => handleDateSelect(formatDate(new Date(), 'yyyy-MM-dd'))}
+                className="w-full"
+              >
+                <Text>Today</Text>
+              </Button>
+              <Button
+                variant="outline"
+                onPress={() => setShowDatePicker(false)}
+                className="w-full"
+              >
+                <Text>Cancel</Text>
+              </Button>
+            </View>
           </View>
         </View>
       )}
