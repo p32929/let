@@ -6,74 +6,83 @@ export async function addSampleData(onProgress?: (progress: number, message: str
 
   if (onProgress) onProgress(0, 'Creating events...');
 
-  // Create sample events with more variety
+  // Create comprehensive sample events
   const sampleEvents = [
     {
-      name: 'Sleep Hours',
+      name: 'Sleep',
       type: 'number' as const,
       unit: 'hours',
-      color: '#3b82f6',
+      color: '#3b82f6', // blue
       order: 0,
     },
     {
-      name: 'Exercise',
+      name: 'Good day',
       type: 'boolean' as const,
-      color: '#10b981',
+      color: '#22c55e', // green
       order: 1,
     },
     {
-      name: 'Productivity',
-      type: 'number' as const,
-      unit: 'hours',
-      color: '#f59e0b',
+      name: 'Went outside',
+      type: 'boolean' as const,
+      color: '#84cc16', // lime
       order: 2,
     },
     {
-      name: 'Mood',
+      name: 'Ran',
       type: 'number' as const,
-      unit: '/10',
-      color: '#ec4899',
+      unit: 'minutes',
+      color: '#f97316', // orange
       order: 3,
     },
     {
-      name: 'Water Intake',
-      type: 'number' as const,
-      unit: 'glasses',
-      color: '#06b6d4',
+      name: 'Drank coffee',
+      type: 'boolean' as const,
+      color: '#78350f', // brown
       order: 4,
     },
     {
-      name: 'Meditation',
+      name: 'Drank tea',
       type: 'boolean' as const,
-      color: '#8b5cf6',
+      color: '#14b8a6', // teal
       order: 5,
     },
     {
-      name: 'Screen Time',
+      name: 'Romance',
       type: 'number' as const,
       unit: 'hours',
-      color: '#ef4444',
+      color: '#ec4899', // pink
       order: 6,
     },
     {
-      name: 'Social Time',
-      type: 'number' as const,
-      unit: 'hours',
-      color: '#f97316',
+      name: 'Watched movie',
+      type: 'boolean' as const,
+      color: '#8b5cf6', // purple
       order: 7,
     },
     {
-      name: 'Caffeine',
-      type: 'number' as const,
-      unit: 'cups',
-      color: '#84cc16',
+      name: 'Watched Korean drama',
+      type: 'boolean' as const,
+      color: '#a855f7', // violet
       order: 8,
     },
     {
-      name: 'Reading',
-      type: 'boolean' as const,
-      color: '#14b8a6',
+      name: 'Dress color',
+      type: 'string' as const,
+      color: '#ef4444', // red
       order: 9,
+    },
+    {
+      name: 'Woke up at',
+      type: 'string' as const,
+      color: '#f59e0b', // amber
+      order: 10,
+    },
+    {
+      name: 'Workout',
+      type: 'number' as const,
+      unit: 'minutes',
+      color: '#10b981', // emerald
+      order: 11,
     },
   ];
 
@@ -93,6 +102,10 @@ export async function addSampleData(onProgress?: (progress: number, message: str
   const totalDays = 730;
   const batchSize = 50; // Process 50 days at a time for better UX
 
+  // Dress colors and wake up times
+  const dressColors = ['red', 'blue', 'black', 'white', 'green', 'pink', 'purple', 'yellow'];
+  const wakeUpTimes = ['6am', '7am', '8am', '9am', '10am'];
+
   for (let i = 0; i < totalDays; i++) {
     const date = format(subDays(today, i), 'yyyy-MM-dd');
 
@@ -106,77 +119,78 @@ export async function addSampleData(onProgress?: (progress: number, message: str
       await new Promise(resolve => setTimeout(resolve, 0));
     }
 
-    // Add some seasonal variation
+    // Add some patterns and correlations
+    const isWeekend = i % 7 < 2; // Roughly weekend pattern
     const seasonalFactor = Math.sin((i / 365) * Math.PI * 2) * 0.5 + 0.5; // 0-1 range
 
-    // Sleep hours (6-9 hours, with seasonal variation)
-    const sleepHours = 6.5 + Math.random() * 2.5 + seasonalFactor * 0.5;
+    // Dress color (with patterns - red tends to be on good days)
+    const dressColorIndex = Math.floor(Math.random() * dressColors.length);
+    const dressColor = dressColors[dressColorIndex];
+    const isRedDress = dressColor === 'red';
+    const isBlackDress = dressColor === 'black';
 
-    // Exercise (60% chance if sleep > 7 hours, less in winter)
-    const exerciseChance = sleepHours > 7 ? 0.6 : 0.4;
-    const exercise = Math.random() < (exerciseChance * (0.8 + seasonalFactor * 0.4));
+    // Wake up time (earlier wake up = better day pattern)
+    const wakeUpIndex = Math.floor(Math.random() * wakeUpTimes.length);
+    const wakeUpTime = wakeUpTimes[wakeUpIndex];
+    const wokeUpEarly = wakeUpIndex < 2; // 6am or 7am
 
-    // Productivity (correlated with sleep and exercise)
-    const baseProductivity = sleepHours - 2;
-    const exerciseBonus = exercise ? 1 : 0;
-    const productivity = Math.max(
-      2,
-      Math.min(10, baseProductivity + exerciseBonus + (Math.random() - 0.5) * 2)
-    );
+    // Sleep (6-10 hours, better on weekends, better when waking up early)
+    const baseSleep = wokeUpEarly ? 7.5 : 6.5;
+    const weekendBonus = isWeekend ? 1 : 0;
+    const sleep = baseSleep + weekendBonus + (Math.random() - 0.5) * 2;
 
-    // Mood (correlated with sleep, exercise, and season)
-    const baseMood = sleepHours - 1;
-    const exerciseMoodBonus = exercise ? 1.5 : 0;
-    const seasonalMoodBonus = seasonalFactor * 1.5;
-    const mood = Math.max(
-      3,
-      Math.min(10, baseMood + exerciseMoodBonus + seasonalMoodBonus + (Math.random() - 0.5) * 1.5)
-    );
+    // Good day (influenced by sleep, dress color, wake up time)
+    const sleepBoost = sleep > 7.5 ? 0.3 : 0;
+    const redDressBoost = isRedDress ? 0.4 : 0;
+    const earlyWakeBoost = wokeUpEarly ? 0.2 : 0;
+    const blackDressPenalty = isBlackDress ? -0.3 : 0;
+    const goodDayChance = 0.4 + sleepBoost + redDressBoost + earlyWakeBoost + blackDressPenalty;
+    const goodDay = Math.random() < Math.max(0.1, Math.min(0.95, goodDayChance));
 
-    // Water Intake (6-12 glasses, correlated with exercise)
-    const waterIntake = exercise
-      ? 8 + Math.random() * 4
-      : 6 + Math.random() * 3;
+    // Went outside (more likely on good days and weekends)
+    const wentOutsideChance = goodDay ? 0.8 : 0.5;
+    const weekendOutsideBoost = isWeekend ? 0.2 : 0;
+    const wentOutside = Math.random() < (wentOutsideChance + weekendOutsideBoost + seasonalFactor * 0.2);
 
-    // Meditation (30% base, higher when stressed/poor sleep)
-    const meditationChance = sleepHours < 7 ? 0.5 : 0.3;
-    const meditation = Math.random() < meditationChance;
+    // Ran (only when went outside, more when wearing red/comfortable colors)
+    const ranChance = wentOutside ? (isRedDress ? 0.5 : 0.3) : 0.05;
+    const ran = Math.random() < ranChance ? 20 + Math.random() * 40 : 0; // 0 or 20-60 minutes
 
-    // Screen Time (2-8 hours, inversely correlated with productivity and exercise)
-    const screenTime = Math.max(
-      2,
-      Math.min(8, 8 - productivity * 0.4 - (exercise ? 1 : 0) + (Math.random() - 0.5) * 2)
-    );
+    // Coffee vs Tea (mutually somewhat exclusive, coffee on tired days)
+    const drankCoffee = sleep < 7 ? Math.random() < 0.8 : Math.random() < 0.5;
+    const drankTea = !drankCoffee && Math.random() < 0.6;
 
-    // Social Time (0-6 hours, weekend pattern and seasonal)
-    const isWeekend = i % 7 < 2; // Roughly weekend pattern
-    const socialTime = isWeekend
-      ? 2 + Math.random() * 4 + seasonalFactor * 1
-      : Math.random() * 2 + seasonalFactor * 0.5;
+    // Romance (more on good days, weekends, after good sleep)
+    const romanceChance = goodDay && isWeekend ? 0.6 : goodDay ? 0.3 : 0.1;
+    const romance = Math.random() < romanceChance ? 1 + Math.random() * 3 : 0; // 0 or 1-4 hours
 
-    // Caffeine (1-5 cups, inversely correlated with sleep)
-    const caffeine = Math.max(
-      1,
-      Math.min(5, 5 - sleepHours * 0.5 + (Math.random() - 0.5) * 1.5)
-    );
+    // Watched movie (more on weekends, less on good productive days)
+    const movieChance = isWeekend ? 0.5 : goodDay ? 0.2 : 0.4;
+    const watchedMovie = Math.random() < movieChance;
 
-    // Reading (40% chance, higher when less screen time)
-    const readingChance = screenTime < 4 ? 0.6 : 0.3;
-    const reading = Math.random() < readingChance;
+    // Watched Korean drama (alternative to movie, more addictive pattern)
+    const dramaChance = !watchedMovie ? 0.4 : 0.1;
+    const watchedKoreanDrama = Math.random() < dramaChance;
+
+    // Workout (different from running, more structured)
+    const workoutChance = wokeUpEarly ? 0.6 : goodDay ? 0.4 : 0.2;
+    const workout = Math.random() < workoutChance ? 30 + Math.random() * 60 : 0; // 0 or 30-90 minutes
 
     // Insert values using webDb
-    await webDb.setEventValue(insertedEvents[0].id, date, sleepHours.toFixed(1));
-    await webDb.setEventValue(insertedEvents[1].id, date, exercise.toString());
-    await webDb.setEventValue(insertedEvents[2].id, date, productivity.toFixed(1));
-    await webDb.setEventValue(insertedEvents[3].id, date, mood.toFixed(1));
-    await webDb.setEventValue(insertedEvents[4].id, date, waterIntake.toFixed(1));
-    await webDb.setEventValue(insertedEvents[5].id, date, meditation.toString());
-    await webDb.setEventValue(insertedEvents[6].id, date, screenTime.toFixed(1));
-    await webDb.setEventValue(insertedEvents[7].id, date, socialTime.toFixed(1));
-    await webDb.setEventValue(insertedEvents[8].id, date, caffeine.toFixed(1));
-    await webDb.setEventValue(insertedEvents[9].id, date, reading.toString());
+    await webDb.setEventValue(insertedEvents[0].id, date, sleep.toFixed(1));
+    await webDb.setEventValue(insertedEvents[1].id, date, goodDay.toString());
+    await webDb.setEventValue(insertedEvents[2].id, date, wentOutside.toString());
+    await webDb.setEventValue(insertedEvents[3].id, date, ran.toFixed(0));
+    await webDb.setEventValue(insertedEvents[4].id, date, drankCoffee.toString());
+    await webDb.setEventValue(insertedEvents[5].id, date, drankTea.toString());
+    await webDb.setEventValue(insertedEvents[6].id, date, romance.toFixed(1));
+    await webDb.setEventValue(insertedEvents[7].id, date, watchedMovie.toString());
+    await webDb.setEventValue(insertedEvents[8].id, date, watchedKoreanDrama.toString());
+    await webDb.setEventValue(insertedEvents[9].id, date, dressColor);
+    await webDb.setEventValue(insertedEvents[10].id, date, wakeUpTime);
+    await webDb.setEventValue(insertedEvents[11].id, date, workout.toFixed(0));
 
-    dataPointCount += 10;
+    dataPointCount += 12;
   }
 
   console.log(`Added ${dataPointCount} data points`);

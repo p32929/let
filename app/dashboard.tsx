@@ -13,7 +13,7 @@ const screenWidth = Dimensions.get('window').width;
 
 interface EventDataPoint {
   date: string;
-  value: number;
+  value: number | string;
 }
 
 interface Pattern {
@@ -31,6 +31,7 @@ export default function DashboardScreen() {
   const [eventData, setEventData] = React.useState<{ event: Event; dataPoints: EventDataPoint[] }[]>([]);
   const [chartData, setChartData] = React.useState<{ event: Event; dataPoints: EventDataPoint[] }[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [isAnalyzingPatterns, setIsAnalyzingPatterns] = React.useState(false);
   const [timeRange, setTimeRange] = React.useState<TimeRange>('30d');
 
   const getDaysForRange = (range: TimeRange): number => {
@@ -57,7 +58,11 @@ export default function DashboardScreen() {
           const values = await getEventValuesForDateRange(event.id, startStr, endStr);
           const dataPoints: EventDataPoint[] = values.map((v) => ({
             date: v.date,
-            value: event.type === 'boolean' ? (v.value === 'true' ? 1 : 0) : parseFloat(v.value) || 0,
+            value: event.type === 'string'
+              ? v.value
+              : event.type === 'boolean'
+                ? (v.value === 'true' ? 1 : 0)
+                : parseFloat(v.value) || 0,
           }));
           return { event, dataPoints };
         });
@@ -65,9 +70,18 @@ export default function DashboardScreen() {
         const allData = await Promise.all(dataPromises);
         setEventData(allData);
 
-        // Discover patterns from ALL data
-        const discoveredPatterns = discoverPatterns(allData);
-        setPatterns(discoveredPatterns);
+        // Discover patterns from ALL data with loading state
+        setIsAnalyzingPatterns(true);
+        setTimeout(() => {
+          try {
+            const discoveredPatterns = discoverPatterns(allData);
+            setPatterns(discoveredPatterns);
+          } catch (error) {
+            console.error('Failed to discover patterns:', error);
+          } finally {
+            setIsAnalyzingPatterns(false);
+          }
+        }, 100); // Small delay to ensure UI updates
       } catch (error) {
         console.error('Failed to analyze patterns:', error);
       } finally {
@@ -104,43 +118,137 @@ export default function DashboardScreen() {
     allData: { event: Event; dataPoints: EventDataPoint[] }[]
   ): Pattern[] => {
     const patterns: Pattern[] = [];
-    const numericEvents = allData.filter((d) => d.event.type !== 'string');
+    const stringEvents = allData.filter((d) => d.event.type === 'string');
+    const booleanEvents = allData.filter((d) => d.event.type === 'boolean');
+    const numberEvents = allData.filter((d) => d.event.type === 'number');
 
-    if (numericEvents.length < 2) return patterns;
+    if (allData.length < 2) return patterns;
 
-    // 1. THRESHOLD PATTERNS: "When X > threshold, Y happens"
-    for (const { event: event1, dataPoints: data1 } of numericEvents) {
-      if (data1.length < 5) continue;
+    // COMPREHENSIVE PATTERN DISCOVERY:
+    // For each string value, analyze ALL numeric/boolean outcomes together
+    for (const { event: stringEvent, dataPoints: stringData } of stringEvents) {
+      if (stringData.length < 1) continue;
 
-      // Find meaningful thresholds
-      const values = data1.map((d) => d.value);
-      const avg = values.reduce((a, b) => a + b, 0) / values.length;
-      const thresholds = event1.type === 'boolean' ? [0.5] : [avg, avg * 0.7, avg * 1.3];
+      // Find all unique string values
+      const valueFrequency: Record<string, number> = {};
+      stringData.forEach(d => {
+        const val = String(d.value).trim().toLowerCase();
+        if (val) valueFrequency[val] = (valueFrequency[val] || 0) + 1;
+      });
 
-      for (const threshold of thresholds) {
-        for (const { event: event2, dataPoints: data2 } of numericEvents) {
-          if (event1.id === event2.id || data2.length < 5) continue;
+      // Analyze each string value
+      const commonValues = Object.entries(valueFrequency)
+        .filter(([_, count]) => count >= 1)
+        .map(([value]) => value);
 
-          const pattern = analyzeThresholdPattern(
-            event1,
-            data1,
-            threshold,
-            event2,
-            data2
-          );
-          if (pattern) patterns.push(pattern);
+      for (const value of commonValues) {
+        // Find days with this string value
+        const matchingDates = stringData
+          .filter(d => String(d.value).trim().toLowerCase() === value)
+          .map(d => d.date);
+
+        if (matchingDates.length < 1) continue;
+
+        // Analyze all outcomes for this string value
+        const outcomes: string[] = [];
+
+        // Check each number event
+        for (const { event: numEvent, dataPoints: numData } of numberEvents) {
+          const matchingValues = matchingDates
+            .map(date => numData.find(d => d.date === date))
+            .filter(d => d && typeof d.value === 'number')
+            .map(d => d!.value as number);
+
+          const otherDates = stringData
+            .filter(d => String(d.value).trim().toLowerCase() !== value && String(d.value).trim() !== '')
+            .map(d => d.date);
+
+          const otherValues = otherDates
+            .map(date => numData.find(d => d.date === date))
+            .filter(d => d && typeof d.value === 'number')
+            .map(d => d!.value as number);
+
+          if (matchingValues.length > 0 && otherValues.length > 0) {
+            const avgMatching = matchingValues.reduce((a, b) => a + b, 0) / matchingValues.length;
+            const avgOther = otherValues.reduce((a, b) => a + b, 0) / otherValues.length;
+            const minMatching = Math.min(...matchingValues);
+            const maxMatching = Math.max(...matchingValues);
+            const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
+
+            // Only include if there's a noticeable difference from other values
+            const diff = Math.abs(avgMatching - avgOther);
+            const percentDiff = avgOther > 0 ? (diff / avgOther) * 100 : 0;
+
+            // Very lenient threshold - include almost anything
+            if (percentDiff > 5 || diff > 0.5) {
+              // Show range if there's variation, otherwise just the average
+              if (maxMatching - minMatching > 0.5) {
+                outcomes.push(`${numEvent.name} of ${minMatching.toFixed(1)} to ${maxMatching.toFixed(1)}${unit}`);
+              } else {
+                outcomes.push(`${numEvent.name} of about ${avgMatching.toFixed(1)}${unit}`);
+              }
+            }
+          }
         }
-      }
-    }
 
-    // 2. CO-OCCURRENCE PATTERNS: "When X happens, Y happens N% of the time"
-    for (let i = 0; i < numericEvents.length; i++) {
-      for (let j = i + 1; j < numericEvents.length; j++) {
-        const { event: event1, dataPoints: data1 } = numericEvents[i];
-        const { event: event2, dataPoints: data2 } = numericEvents[j];
+        // Check each boolean event
+        for (const { event: boolEvent, dataPoints: boolData } of booleanEvents) {
+          const matchingValues = matchingDates
+            .map(date => boolData.find(d => d.date === date))
+            .filter(d => d && typeof d.value === 'number')
+            .map(d => d!.value as number);
 
-        const pattern = analyzeCoOccurrence(event1, data1, event2, data2);
-        if (pattern) patterns.push(pattern);
+          const otherDates = stringData
+            .filter(d => String(d.value).trim().toLowerCase() !== value && String(d.value).trim() !== '')
+            .map(d => d.date);
+
+          const otherValues = otherDates
+            .map(date => boolData.find(d => d.date === date))
+            .filter(d => d && typeof d.value === 'number')
+            .map(d => d!.value as number);
+
+          if (matchingValues.length > 0 && otherValues.length > 0) {
+            const matchingTrue = matchingValues.filter(v => v > 0.5).length;
+            const matchingRate = (matchingTrue / matchingValues.length) * 100;
+
+            const otherTrue = otherValues.filter(v => v > 0.5).length;
+            const otherRate = (otherTrue / otherValues.length) * 100;
+
+            const diff = matchingRate - otherRate;
+            // Very lenient threshold - show even small differences
+            if (Math.abs(diff) > 10) {
+              if (diff > 0) {
+                // More likely to have this outcome
+                if (matchingRate >= 80) {
+                  outcomes.push(`a ${boolEvent.name}`);
+                } else {
+                  outcomes.push(`${boolEvent.name} (${matchingRate.toFixed(0)}% of the time)`);
+                }
+              } else {
+                // Less likely to have this outcome
+                if (matchingRate <= 20) {
+                  outcomes.push(`no ${boolEvent.name}`);
+                } else {
+                  outcomes.push(`less ${boolEvent.name} (only ${matchingRate.toFixed(0)}% of the time)`);
+                }
+              }
+            }
+          }
+        }
+
+        // Create comprehensive pattern if we have outcomes
+        if (outcomes.length > 0) {
+          const description = `When ${stringEvent.name} is "${value}", you tend to have ${outcomes.join(' and ')}`;
+
+          patterns.push({
+            description,
+            confidence: Math.min(95, 70 + outcomes.length * 5),
+            type: 'co-occurrence',
+            events: [stringEvent, ...allData.filter(d =>
+              outcomes.some(o => o.includes(d.event.name))
+            ).map(d => d.event)],
+          });
+        }
       }
     }
 
@@ -148,108 +256,6 @@ export default function DashboardScreen() {
     return patterns.sort((a, b) => b.confidence - a.confidence).slice(0, 10);
   };
 
-  const analyzeThresholdPattern = (
-    event1: Event,
-    data1: EventDataPoint[],
-    threshold: number,
-    event2: Event,
-    data2: EventDataPoint[]
-  ): Pattern | null => {
-    // Find common dates
-    const commonDates = data1
-      .map((d) => d.date)
-      .filter((date) => data2.some((d2) => d2.date === date));
-
-    if (commonDates.length < 5) return null;
-
-    // Split into above/below threshold
-    const aboveThreshold = commonDates.filter((date) => {
-      const val = data1.find((d) => d.date === date)!.value;
-      return val > threshold;
-    });
-
-    const belowThreshold = commonDates.filter((date) => {
-      const val = data1.find((d) => d.date === date)!.value;
-      return val <= threshold;
-    });
-
-    if (aboveThreshold.length < 3 || belowThreshold.length < 3) return null;
-
-    // Calculate event2 averages
-    const avgWhenAbove =
-      aboveThreshold.reduce((sum, date) => {
-        return sum + data2.find((d) => d.date === date)!.value;
-      }, 0) / aboveThreshold.length;
-
-    const avgWhenBelow =
-      belowThreshold.reduce((sum, date) => {
-        return sum + data2.find((d) => d.date === date)!.value;
-      }, 0) / belowThreshold.length;
-
-    // Calculate difference and confidence
-    const difference = Math.abs(avgWhenAbove - avgWhenBelow);
-    const avgValue = data2.map((d) => d.value).reduce((a, b) => a + b, 0) / data2.length;
-    const percentDiff = (difference / avgValue) * 100;
-
-    if (percentDiff < 20) return null; // Less than 20% difference is not meaningful
-
-    const confidence = Math.min(95, percentDiff);
-    const unit1 = event1.unit ? ` ${event1.unit}` : '';
-    const unit2 = event2.unit ? ` ${event2.unit}` : '';
-
-    const thresholdStr =
-      event1.type === 'boolean' ? 'happens' : `> ${threshold.toFixed(1)}${unit1}`;
-    const direction = avgWhenAbove > avgWhenBelow ? 'higher' : 'lower';
-
-    return {
-      description: `When ${event1.name} ${thresholdStr}, ${event2.name} is ${direction} (${avgWhenAbove.toFixed(1)}${unit2} vs ${avgWhenBelow.toFixed(1)}${unit2})`,
-      confidence: Math.round(confidence),
-      type: 'threshold',
-      events: [event1, event2],
-    };
-  };
-
-  const analyzeCoOccurrence = (
-    event1: Event,
-    data1: EventDataPoint[],
-    event2: Event,
-    data2: EventDataPoint[]
-  ): Pattern | null => {
-    // Find common dates
-    const commonDates = data1
-      .map((d) => d.date)
-      .filter((date) => data2.some((d2) => d2.date === date));
-
-    if (commonDates.length < 5) return null;
-
-    // For boolean events, check co-occurrence
-    if (event1.type === 'boolean' || event2.type === 'boolean') {
-      const event1Happens = commonDates.filter((date) => {
-        const val = data1.find((d) => d.date === date)!.value;
-        return val > 0.5;
-      });
-
-      const bothHappen = event1Happens.filter((date) => {
-        const val = data2.find((d) => d.date === date)!.value;
-        return val > 0.5;
-      });
-
-      if (event1Happens.length < 3) return null;
-
-      const coOccurrenceRate = (bothHappen.length / event1Happens.length) * 100;
-
-      if (coOccurrenceRate < 60 && coOccurrenceRate > 40) return null; // Not meaningful
-
-      return {
-        description: `When ${event1.name} happens, ${event2.name} happens ${coOccurrenceRate.toFixed(0)}% of the time`,
-        confidence: Math.round(Math.abs(coOccurrenceRate - 50) + 50),
-        type: 'co-occurrence',
-        events: [event1, event2],
-      };
-    }
-
-    return null;
-  };
 
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 80) return 'text-green-600';
@@ -266,15 +272,36 @@ export default function DashboardScreen() {
   const renderCombinedChart = () => {
     if (chartData.length === 0) return null;
 
-    // Filter out string events and get numeric ones
+    // Get numeric and string events separately
     const numericEvents = chartData.filter((d) => d.event.type !== 'string' && d.dataPoints.length > 0);
+    const stringEvents = chartData.filter((d) => d.event.type === 'string' && d.dataPoints.length > 0);
 
-    if (numericEvents.length === 0) return null;
+    if (numericEvents.length === 0 && stringEvents.length === 0) return null;
 
-    // Get all unique dates
+    // Get all unique dates from both numeric and string events
     const allDates = Array.from(
-      new Set(numericEvents.flatMap((d) => d.dataPoints.map((p) => p.date)))
+      new Set([
+        ...numericEvents.flatMap((d) => d.dataPoints.map((p) => p.date)),
+        ...stringEvents.flatMap((d) => d.dataPoints.map((p) => p.date))
+      ])
     ).sort();
+
+    // Create mapping for string values to numbers
+    const stringValueMappings: Record<string, { values: string[]; colorMap: Record<string, string> }> = {};
+    stringEvents.forEach(({ event, dataPoints }) => {
+      const uniqueValues = Array.from(new Set(
+        dataPoints.map(d => String(d.value).trim().toLowerCase()).filter(v => v)
+      )).sort();
+
+      // Assign each unique value a position from 0 to 100
+      const colorMap: Record<string, string> = {};
+      uniqueValues.forEach((val, idx) => {
+        const hue = (idx * 360) / Math.max(uniqueValues.length, 1);
+        colorMap[val] = `hsl(${hue}, 70%, 60%)`;
+      });
+
+      stringValueMappings[event.name] = { values: uniqueValues, colorMap };
+    });
 
     // Create chart data with all events combined
     const combinedChartData = allDates.map((date) => {
@@ -285,9 +312,9 @@ export default function DashboardScreen() {
 
       numericEvents.forEach(({ event, dataPoints }) => {
         const point = dataPoints.find((p) => p.date === date);
-        if (point) {
+        if (point && typeof point.value === 'number') {
           // Normalize to 0-100 scale
-          const values = dataPoints.map((d) => d.value);
+          const values = dataPoints.map((d) => typeof d.value === 'number' ? d.value : 0);
           const min = Math.min(...values);
           const max = Math.max(...values);
           const range = max - min || 1;
@@ -295,6 +322,26 @@ export default function DashboardScreen() {
 
           dataPoint[event.name] = normalized;
           dataPoint[`${event.name}_original`] = point.value;
+        }
+      });
+
+      // Add string events as categorical values
+      stringEvents.forEach(({ event, dataPoints }) => {
+        const point = dataPoints.find((p) => p.date === date);
+        if (point && typeof point.value === 'string') {
+          const stringValue = String(point.value).trim().toLowerCase();
+          const mapping = stringValueMappings[event.name];
+          if (mapping && stringValue) {
+            // Map to position in the list (evenly spaced 0-100)
+            const index = mapping.values.indexOf(stringValue);
+            if (index !== -1) {
+              const position = mapping.values.length > 1
+                ? (index / (mapping.values.length - 1)) * 100
+                : 50;
+              dataPoint[event.name] = position;
+              dataPoint[`${event.name}_original`] = stringValue;
+            }
+          }
         }
       });
 
@@ -310,7 +357,7 @@ export default function DashboardScreen() {
       <View className="bg-card border border-border rounded-lg p-4 mb-4">
         <Text className="font-semibold text-lg mb-2">All Events Combined</Text>
         <Text className="text-sm text-muted-foreground mb-4">
-          Normalized view to see patterns (scrollable)
+          Normalized view to see patterns (scrollable){stringEvents.length > 0 ? ' • Dashed lines = text events' : ''}
         </Text>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={true} className="mb-2">
@@ -339,6 +386,20 @@ export default function DashboardScreen() {
                   }}
                   labelStyle={{ color: '#999' }}
                   itemStyle={{ color: '#fff' }}
+                  formatter={(value: any, name: string, props: any) => {
+                    // Check if this is a string event
+                    const isStringEvent = stringEvents.some(e => e.event.name === name);
+                    if (isStringEvent && props.payload[`${name}_original`]) {
+                      return [props.payload[`${name}_original`], name];
+                    }
+                    // For numeric events, show original value with unit
+                    if (props.payload[`${name}_original`] !== undefined) {
+                      const event = [...numericEvents, ...stringEvents].find(e => e.event.name === name);
+                      const unit = event?.event.unit ? ` ${event.event.unit}` : '';
+                      return [`${props.payload[`${name}_original`]}${unit}`, name];
+                    }
+                    return [value, name];
+                  }}
                 />
                 <Legend wrapperStyle={{ color: '#999' }} />
                 {numericEvents.map(({ event }) => (
@@ -351,6 +412,17 @@ export default function DashboardScreen() {
                     dot={false}
                   />
                 ))}
+                {stringEvents.map(({ event }) => (
+                  <Line
+                    key={event.id}
+                    type="stepAfter"
+                    dataKey={event.name}
+                    stroke={event.color}
+                    strokeWidth={3}
+                    strokeDasharray="5 5"
+                    dot={{ r: 4, fill: event.color }}
+                  />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           </View>
@@ -359,6 +431,21 @@ export default function DashboardScreen() {
         <Text className="text-xs text-muted-foreground mt-3">
           * Values normalized to 0-100% scale for visual comparison. Scroll horizontally to see all data points!
         </Text>
+        {stringEvents.length > 0 && (
+          <View className="mt-3 pt-3 border-t border-border">
+            <Text className="text-xs font-semibold text-muted-foreground mb-2">Text Event Values:</Text>
+            {stringEvents.map(({ event }) => {
+              const mapping = stringValueMappings[event.name];
+              return (
+                <View key={event.id} className="mb-2">
+                  <Text className="text-xs text-muted-foreground">
+                    <Text className="font-semibold" style={{ color: event.color }}>{event.name}:</Text> {mapping.values.join(', ')}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
       </View>
     );
   };
@@ -442,7 +529,35 @@ export default function DashboardScreen() {
             </View>
 
             {/* Patterns Section */}
-            {patterns.length > 0 && (
+            {isAnalyzingPatterns ? (
+              <View className="mb-6">
+                <Text className="text-2xl font-bold mb-1">🔍 Discovered Patterns</Text>
+                <Text className="text-muted-foreground mb-4">
+                  Analyzing your data...
+                </Text>
+
+                {/* Shimmer loading effect */}
+                {[1, 2, 3].map((i) => (
+                  <View
+                    key={i}
+                    className="bg-card border border-border rounded-lg p-4 mb-3 overflow-hidden"
+                  >
+                    <View className="flex-row items-center mb-3">
+                      <View className="w-3 h-3 rounded-full bg-muted mr-2 animate-pulse" />
+                      <View className="w-20 h-4 bg-muted rounded animate-pulse" />
+                      <View className="w-3 h-3 rounded-full bg-muted mx-2 animate-pulse" />
+                      <View className="w-20 h-4 bg-muted rounded animate-pulse" />
+                    </View>
+                    <View className="w-full h-4 bg-muted rounded mb-2 animate-pulse" />
+                    <View className="w-3/4 h-4 bg-muted rounded mb-3 animate-pulse" />
+                    <View className="flex-row items-center justify-between">
+                      <View className="w-24 h-3 bg-muted rounded animate-pulse" />
+                      <View className="w-20 h-3 bg-muted rounded animate-pulse" />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : patterns.length > 0 ? (
               <View className="mb-6">
                 <Text className="text-2xl font-bold mb-1">🔍 Discovered Patterns</Text>
                 <Text className="text-muted-foreground mb-4">
@@ -454,17 +569,17 @@ export default function DashboardScreen() {
                     key={index}
                     className="bg-card border border-border rounded-lg p-4 mb-3"
                   >
-                    {/* Event indicators */}
-                    <View className="flex-row items-center mb-3">
+                    {/* Event indicators - wrapping layout */}
+                    <View className="flex-row flex-wrap items-center mb-3">
                       {pattern.events.map((event, i) => (
-                        <React.Fragment key={event.id}>
-                          {i > 0 && <Text className="mx-2 text-muted-foreground">→</Text>}
+                        <View key={event.id} className="flex-row items-center mb-1">
+                          {i > 0 && <Text className="mx-1 text-muted-foreground text-sm">→</Text>}
                           <View
-                            className="w-3 h-3 rounded-full mr-2"
+                            className="w-3 h-3 rounded-full mr-1"
                             style={{ backgroundColor: event.color }}
                           />
-                          <Text className="font-semibold text-sm">{event.name}</Text>
-                        </React.Fragment>
+                          <Text className="font-semibold text-sm mr-1">{event.name}</Text>
+                        </View>
                       ))}
                     </View>
 
@@ -487,6 +602,13 @@ export default function DashboardScreen() {
                     </View>
                   </View>
                 ))}
+              </View>
+            ) : (
+              <View className="mb-6">
+                <Text className="text-2xl font-bold mb-1">🔍 Discovered Patterns</Text>
+                <Text className="text-muted-foreground mb-4">
+                  No clear patterns found yet. Keep tracking to discover insights!
+                </Text>
               </View>
             )}
           </View>

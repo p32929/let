@@ -2,12 +2,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Text } from '@/components/ui/text';
+import { Icon } from '@/components/ui/icon';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import * as React from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
 import { updateEvent, deleteEvent } from '@/db/operations/events';
 import { useEventsStore } from '@/lib/stores/events-store';
 import type { EventType } from '@/types/events';
+import { CheckIcon, HashIcon, TypeIcon } from 'lucide-react-native';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,21 +22,30 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 
-const EVENT_TYPES: { value: EventType; label: string }[] = [
-  { value: 'boolean', label: 'Yes/No' },
-  { value: 'number', label: 'Number' },
-  { value: 'string', label: 'Text' },
+const EVENT_TYPES: { value: EventType; label: string; icon: any; description: string }[] = [
+  { value: 'boolean', label: 'Yes/No', icon: CheckIcon, description: 'Track completion or presence' },
+  { value: 'number', label: 'Number', icon: HashIcon, description: 'Track quantities or measurements' },
+  { value: 'string', label: 'Text', icon: TypeIcon, description: 'Track notes or descriptions' },
 ];
 
 const PRESET_COLORS = [
-  '#3b82f6', // blue
-  '#10b981', // green
-  '#f59e0b', // amber
   '#ef4444', // red
-  '#8b5cf6', // purple
-  '#ec4899', // pink
-  '#06b6d4', // cyan
+  '#f97316', // orange
+  '#f59e0b', // amber
+  '#eab308', // yellow
   '#84cc16', // lime
+  '#22c55e', // green
+  '#10b981', // emerald
+  '#14b8a6', // teal
+  '#06b6d4', // cyan
+  '#0ea5e9', // sky
+  '#3b82f6', // blue
+  '#6366f1', // indigo
+  '#8b5cf6', // purple
+  '#a855f7', // violet
+  '#d946ef', // fuchsia
+  '#ec4899', // pink
+  '#f43f5e', // rose
 ];
 
 export default function EditEventScreen() {
@@ -125,39 +136,63 @@ export default function EditEventScreen() {
         }}
       />
       <ScrollView className="flex-1 bg-background">
-        <View className="p-4 gap-6">
+        <View className="p-6 gap-6">
+          {/* Header */}
+          <View className="gap-1">
+            <Text className="text-2xl font-bold text-foreground">Edit Event</Text>
+            <Text className="text-sm text-muted-foreground">
+              Update your event details and tracking preferences
+            </Text>
+          </View>
+
           {/* Event Name */}
           <View className="gap-2">
-            <Label>Event Name</Label>
+            <Label className="text-base font-semibold">Event Name</Label>
             <Input
               value={name}
               onChangeText={setName}
-              placeholder="e.g., Morning Exercise"
-              className="native:h-12"
+              placeholder="e.g., Morning Exercise, Water Intake"
+              className="native:h-12 text-base"
             />
           </View>
 
           {/* Event Type */}
           <View className="gap-2">
-            <Label>Type</Label>
-            <View className="flex-row gap-2">
+            <Label className="text-base font-semibold">Type</Label>
+            <View className="gap-2">
               {EVENT_TYPES.map((eventType) => (
                 <Pressable
                   key={eventType.value}
                   onPress={() => setType(eventType.value)}
-                  className={`flex-1 items-center justify-center rounded-lg border-2 p-3 ${
+                  className={`flex-row items-center rounded-lg border-2 p-3 ${
                     type === eventType.value
                       ? 'border-primary bg-primary/10'
                       : 'border-border bg-card'
                   }`}
                 >
-                  <Text
-                    className={`font-medium ${
+                  <View className={`size-10 rounded-lg items-center justify-center mr-3 ${
+                    type === eventType.value ? 'bg-primary' : 'bg-muted'
+                  }`}>
+                    <Icon
+                      as={eventType.icon}
+                      className={`size-5 ${type === eventType.value ? 'text-primary-foreground' : 'text-muted-foreground'}`}
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Text className={`font-semibold ${
                       type === eventType.value ? 'text-primary' : 'text-foreground'
-                    }`}
-                  >
-                    {eventType.label}
-                  </Text>
+                    }`}>
+                      {eventType.label}
+                    </Text>
+                    <Text className="text-xs text-muted-foreground">
+                      {eventType.description}
+                    </Text>
+                  </View>
+                  {type === eventType.value && (
+                    <View className="size-5 rounded-full bg-primary items-center justify-center">
+                      <Icon as={CheckIcon} className="size-3 text-primary-foreground" />
+                    </View>
+                  )}
                 </Pressable>
               ))}
             </View>
@@ -166,54 +201,86 @@ export default function EditEventScreen() {
           {/* Unit (optional) */}
           {type === 'number' && (
             <View className="gap-2">
-              <Label>
-                Unit <Text className="text-muted-foreground">(optional)</Text>
+              <Label className="text-base font-semibold">
+                Unit <Text className="text-muted-foreground font-normal">(optional)</Text>
               </Label>
               <Input
                 value={unit}
                 onChangeText={setUnit}
-                placeholder="e.g., minutes, cups, km"
-                className="native:h-12"
+                placeholder="e.g., minutes, cups, km, hours"
+                className="native:h-12 text-base"
               />
+              <Text className="text-xs text-muted-foreground">
+                Add a unit to help you understand your measurements better
+              </Text>
             </View>
           )}
 
           {/* Color Picker */}
           <View className="gap-2">
-            <Label>Color</Label>
-            <View className="flex-row flex-wrap gap-3">
+            <Label className="text-base font-semibold">Color Theme</Label>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              className="flex-row"
+              contentContainerStyle={{ gap: 8 }}
+            >
+              {/* Preset Colors */}
               {PRESET_COLORS.map((presetColor) => (
                 <Pressable
                   key={presetColor}
                   onPress={() => setColor(presetColor)}
-                  className={`size-12 rounded-full items-center justify-center ${
-                    color === presetColor ? 'border-4 border-primary' : ''
-                  }`}
-                  style={{ backgroundColor: presetColor }}
                 >
-                  {color === presetColor && (
-                    <View className="size-2 rounded-full bg-white" />
-                  )}
+                  <View
+                    className={`size-12 rounded-lg items-center justify-center ${
+                      color === presetColor ? 'border-2 border-primary' : 'border border-border'
+                    }`}
+                    style={{ backgroundColor: presetColor }}
+                  >
+                    {color === presetColor && (
+                      <Icon as={CheckIcon} className="size-5 text-white" />
+                    )}
+                  </View>
                 </Pressable>
               ))}
-            </View>
+
+              {/* Custom Color Picker */}
+              <Pressable
+                onPress={() => {
+                  // @ts-ignore - web only
+                  if (typeof document !== 'undefined') {
+                    const input = document.createElement('input');
+                    input.type = 'color';
+                    input.value = color;
+                    input.onchange = (e: any) => setColor(e.target.value);
+                    input.click();
+                  }
+                }}
+                className="size-12 rounded-lg border-2 border-dashed border-border bg-muted items-center justify-center"
+              >
+                <View
+                  className="size-8 rounded-md border border-border"
+                  style={{ backgroundColor: color }}
+                />
+              </Pressable>
+            </ScrollView>
           </View>
 
           {/* Buttons */}
-          <View className="gap-3 pt-4">
+          <View className="gap-3 pt-2">
             <View className="flex-row gap-3">
               <Button
                 variant="outline"
                 onPress={() => router.back()}
                 disabled={isSubmitting || isDeleting}
-                className="flex-1"
+                className="flex-1 h-12"
               >
                 <Text>Cancel</Text>
               </Button>
               <Button
                 onPress={handleSubmit}
                 disabled={!name.trim() || isSubmitting || isDeleting}
-                className="flex-1"
+                className="flex-1 h-12"
               >
                 <Text>{isSubmitting ? 'Updating...' : 'Update Event'}</Text>
               </Button>
@@ -226,6 +293,7 @@ export default function EditEventScreen() {
                   variant="destructive"
                   disabled={isSubmitting || isDeleting}
                   onPress={() => setShowDeleteDialog(true)}
+                  className="h-12"
                 >
                   <Text>{isDeleting ? 'Deleting...' : 'Delete Event'}</Text>
                 </Button>

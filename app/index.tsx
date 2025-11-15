@@ -254,24 +254,6 @@ export default function HomeScreen() {
                     >
                       {formatDate(day, 'd')}
                     </Text>
-                    {/* Completion indicator */}
-                    {completion && completion.total > 0 && (
-                      <View className="mt-1">
-                        {completionPercent === 100 ? (
-                          <View className={`w-4 h-4 rounded-full items-center justify-center ${selected ? 'bg-primary-foreground' : 'bg-green-500'}`}>
-                            <Text className={`text-[10px] font-bold ${selected ? 'text-primary' : 'text-white'}`}>✓</Text>
-                          </View>
-                        ) : completionPercent > 0 ? (
-                          <View className="items-center">
-                            <Text className={`text-[9px] font-medium ${selected ? 'text-primary-foreground' : 'text-orange-500'}`}>
-                              {completion.completed}/{completion.total}
-                            </Text>
-                          </View>
-                        ) : (
-                          <View className={`w-3 h-3 rounded-full border-2 ${selected ? 'border-primary-foreground/50' : 'border-muted-foreground/30'}`} />
-                        )}
-                      </View>
-                    )}
                   </Pressable>
                 );
               })}
