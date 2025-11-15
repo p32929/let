@@ -584,10 +584,10 @@ export default function DashboardScreen() {
   };
 
   const CombinedChart = () => {
-    // Call hooks unconditionally (React rules)
-    const mobileChartPress = Platform.OS !== 'web' ? useChartPressState({ x: 0, y: {} }) : { state: null, isActive: false };
-    const chartPressState = mobileChartPress.state;
-    const isActive = mobileChartPress.isActive;
+    // Always call hooks unconditionally (React rules) - Victory Native will be undefined on web
+    const { state, isActive } = Platform.OS !== 'web' && useChartPressState
+      ? useChartPressState({ x: 0, y: {} })
+      : { state: null, isActive: false };
 
     // Web-only tooltip state
     const [webTooltip, setWebTooltip] = React.useState<{ active?: boolean; payload?: any; label?: string } | null>(null);
@@ -749,7 +749,7 @@ export default function DashboardScreen() {
                   xKey="date"
                   yKeys={[...numericEvents, ...stringEvents].map(({ event }) => event.name)}
                   domainPadding={{ left: 20, right: 20, top: 20, bottom: 20 }}
-                  chartPressState={chartPressState}
+                  chartPressState={state}
                 >
                   {({ points }) => (
                     <>
@@ -763,15 +763,15 @@ export default function DashboardScreen() {
                         />
                       ))}
                       {/* Show tooltip on press */}
-                      {isActive && chartPressState && (
+                      {isActive && state && (
                         <>
                           {[...numericEvents, ...stringEvents].map(({ event }) => {
-                            const point = (chartPressState.y as any)[event.name];
+                            const point = (state.y as any)[event.name];
                             if (!point) return null;
                             return (
                               <Circle
                                 key={`tooltip-${event.id}`}
-                                cx={chartPressState.x.position}
+                                cx={state.x.position}
                                 cy={point.position}
                                 r={6}
                                 color={event.color}
@@ -787,13 +787,13 @@ export default function DashboardScreen() {
               </View>
 
               {/* Tooltip information for mobile */}
-              {isActive && chartPressState && (
+              {isActive && state && (
                 <View className="mt-2 p-3 bg-card border border-border rounded-lg">
                   <Text className="text-sm font-semibold mb-1">
-                    {combinedChartData[Math.round(chartPressState.x.value as any)]?.date || 'N/A'}
+                    {combinedChartData[Math.round(state.x.value as any)]?.date || 'N/A'}
                   </Text>
                   {[...numericEvents, ...stringEvents].map(({ event }) => {
-                    const value = (chartPressState.y as any)[event.name]?.value;
+                    const value = (state.y as any)[event.name]?.value;
                     if (value === undefined) return null;
                     return (
                       <View key={event.id} className="flex-row items-center mt-1">
