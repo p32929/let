@@ -9,7 +9,7 @@ import { format, subDays, parseISO } from 'date-fns';
 import type { Event } from '@/types/events';
 
 // Platform-specific imports
-let CartesianChart: any, Line: any, useChartPressState: any, Circle: any, useFont: any;
+let CartesianChart: any, Line: any, useChartPressState: any, Circle: any, useFont: any, Group: any, RoundedRect: any, SkiaText: any, vec: any;
 let LineChart: any, ResponsiveContainer: any, XAxis: any, YAxis: any, Tooltip: any, Legend: any, RechartsLine: any;
 
 if (Platform.OS === 'web') {
@@ -31,6 +31,10 @@ if (Platform.OS === 'web') {
   useChartPressState = victoryNative.useChartPressState;
   Circle = skia.Circle;
   useFont = skia.useFont;
+  Group = skia.Group;
+  RoundedRect = skia.RoundedRect;
+  SkiaText = skia.Text;
+  vec = skia.vec;
 }
 
 const screenWidth = Dimensions.get('window').width;
@@ -672,17 +676,29 @@ export default function DashboardScreen() {
 
     React.useEffect(() => {
       if (isActive && state && combinedChartData.length > 0) {
+        console.log('[TOOLTIP DEBUG] Touch detected!', {
+          isActive,
+          hasState: !!state,
+          stateXValue: state.x?.value,
+          dataLength: combinedChartData.length,
+          stateYKeys: state.y ? Object.keys(state.y) : []
+        });
+
         const dataIndex = Math.round(state.x.value as any);
+        console.log('[TOOLTIP DEBUG] Data index:', dataIndex, 'Data at index:', combinedChartData[dataIndex]);
+
         const date = combinedChartData[dataIndex]?.date || 'N/A';
         const values: Record<string, number> = {};
 
         [...numericEvents, ...stringEvents].forEach(({ event }) => {
           const value = (state.y as any)[event.name]?.value;
+          console.log(`[TOOLTIP DEBUG] Event ${event.name}: value =`, value);
           if (value !== undefined) {
             values[event.name] = value;
           }
         });
 
+        console.log('[TOOLTIP DEBUG] Setting tooltip data:', { date, values });
         setLastTouchedData({ date, values });
       }
     }, [isActive, state, combinedChartData, numericEvents, stringEvents]);
