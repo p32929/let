@@ -766,18 +766,43 @@ export default function DashboardScreen() {
                   decorator={() => {
                     // Show tooltip decorator
                     if (tooltipPos && tooltipPos.visible) {
+                      // Smart positioning to keep tooltip within screen bounds
+                      const tooltipWidth = 180;
+                      const tooltipHeight = 150;
+                      const padding = 8;
+
+                      // Calculate horizontal position
+                      let leftPos = tooltipPos.x - tooltipWidth / 2;
+                      if (leftPos < padding) leftPos = padding;
+                      if (leftPos + tooltipWidth > screenWidth - padding) {
+                        leftPos = screenWidth - tooltipWidth - padding;
+                      }
+
+                      // Calculate vertical position (always above the point)
+                      let topPos = tooltipPos.y - tooltipHeight - 10;
+                      if (topPos < padding) {
+                        // If no room above, show below the point
+                        topPos = tooltipPos.y + 20;
+                      }
+
                       return (
                         <View
                           style={{
                             position: 'absolute',
-                            left: tooltipPos.x - 75,
-                            top: tooltipPos.y - 120,
-                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            left: leftPos,
+                            top: topPos,
+                            backgroundColor: 'rgba(0, 0, 0, 0.9)',
                             padding: 12,
                             borderRadius: 8,
                             borderWidth: 1,
-                            borderColor: '#333',
-                            minWidth: 150,
+                            borderColor: '#444',
+                            minWidth: tooltipWidth,
+                            maxWidth: tooltipWidth,
+                            shadowColor: '#000',
+                            shadowOffset: { width: 0, height: 2 },
+                            shadowOpacity: 0.25,
+                            shadowRadius: 4,
+                            elevation: 5,
                           }}
                         >
                           <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold', marginBottom: 4 }}>
