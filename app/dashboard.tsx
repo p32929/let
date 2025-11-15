@@ -788,6 +788,7 @@ export default function DashboardScreen() {
                     right: 0,
                     bottom: 0,
                     zIndex: 1000,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
                   }}
                   onPress={() => setTooltipPos(null)}
                 >
