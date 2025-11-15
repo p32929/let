@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Stack, router } from 'expo-router';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon } from 'lucide-react-native';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon } from 'lucide-react-native';
 import * as React from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -14,6 +14,7 @@ import { migrateDatabase } from '@/db/migrate';
 import { EventTracker } from '@/components/event-tracker';
 import { addSampleData } from '@/lib/sample-data';
 import { getEventValuesForDateRange } from '@/db/operations/events';
+import { exportData, importData, downloadExportFile, readImportFile } from '@/lib/import-export';
 
 export default function HomeScreen() {
   const [currentWeekDate, setCurrentWeekDate] = React.useState(new Date());
@@ -23,6 +24,11 @@ export default function HomeScreen() {
   const [loadingMessage, setLoadingMessage] = React.useState('');
   const [showSampleDataPrompt, setShowSampleDataPrompt] = React.useState(false);
   const [showMenu, setShowMenu] = React.useState(false);
+  const [showImportDialog, setShowImportDialog] = React.useState(false);
+  const [importingData, setImportingData] = React.useState(false);
+  const [importProgress, setImportProgress] = React.useState(0);
+  const [importMessage, setImportMessage] = React.useState('');
+  const [clearExisting, setClearExisting] = React.useState(false);
   const [weekEventCompletion, setWeekEventCompletion] = React.useState<Record<string, { total: number; completed: number }>>({});
   const { events, loadEvents, isLoading } = useEventsStore();
   const { colorScheme, setColorScheme } = useColorScheme();
@@ -136,6 +142,58 @@ export default function HomeScreen() {
   const handleDismissSampleDataPrompt = () => {
     setShowSampleDataPrompt(false);
     localStorage.setItem('life-events-tracker-initialized', 'true');
+  };
+
+  const handleExportData = async () => {
+    try {
+      setShowMenu(false);
+      const data = await exportData();
+      downloadExportFile(data);
+    } catch (error) {
+      console.error('Failed to export data:', error);
+    }
+  };
+
+  const handleImportFile = async (event: any) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setImportingData(true);
+      setImportProgress(0);
+      setImportMessage('Reading file...');
+
+      const data = await readImportFile(file);
+
+      const result = await importData(data, {
+        clearExisting,
+        onProgress: (progress, message) => {
+          setImportProgress(progress);
+          setImportMessage(message);
+        },
+      });
+
+      if (result.success) {
+        setImportMessage('Reloading events...');
+        await loadEvents();
+        setShowImportDialog(false);
+        setClearExisting(false);
+      } else {
+        setImportMessage(`Error: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Failed to import data:', error);
+      setImportMessage('Failed to import data');
+    } finally {
+      setImportingData(false);
+      setImportProgress(0);
+      setTimeout(() => setImportMessage(''), 3000);
+    }
+  };
+
+  const handleOpenImportDialog = () => {
+    setShowMenu(false);
+    setShowImportDialog(true);
   };
 
   // Swipe gesture for week navigation
@@ -321,6 +379,20 @@ export default function HomeScreen() {
               <Text className="text-base text-foreground">Reorder Events</Text>
             </Pressable>
             <Pressable
+              className="flex-row items-center px-4 py-3 border-b border-border hover:bg-muted/50 active:bg-muted"
+              onPress={handleExportData}
+            >
+              <Icon as={DownloadIcon} className="size-5 mr-3 text-foreground" />
+              <Text className="text-base text-foreground">Export Data</Text>
+            </Pressable>
+            <Pressable
+              className="flex-row items-center px-4 py-3 border-b border-border hover:bg-muted/50 active:bg-muted"
+              onPress={handleOpenImportDialog}
+            >
+              <Icon as={UploadIcon} className="size-5 mr-3 text-foreground" />
+              <Text className="text-base text-foreground">Import Data</Text>
+            </Pressable>
+            <Pressable
               className="flex-row items-center px-4 py-3 hover:bg-muted/50 active:bg-muted"
               onPress={() => {
                 setColorScheme(colorScheme === 'dark' ? 'light' : 'dark');
@@ -386,6 +458,98 @@ export default function HomeScreen() {
             <Text className="text-xs text-muted-foreground text-center mt-4">
               This may take a minute... Generating 7,300 data points
             </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Import Dialog */}
+      {showImportDialog && (
+        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
+          <View className="bg-card border border-border rounded-lg p-6 max-w-md w-full">
+            <Text className="text-xl font-bold mb-2">Import Data</Text>
+            <Text className="text-muted-foreground mb-4">
+              Upload a backup file to restore your events, tracking data, and settings.
+            </Text>
+
+            {!importingData ? (
+              <>
+                {/* Clear Existing Data Checkbox */}
+                <Pressable
+                  className="flex-row items-center mb-4 p-3 rounded-lg bg-muted/30"
+                  onPress={() => setClearExisting(!clearExisting)}
+                >
+                  <View
+                    className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${
+                      clearExisting ? 'bg-primary border-primary' : 'border-muted-foreground'
+                    }`}
+                  >
+                    {clearExisting && (
+                      <Icon as={CheckCircleIcon} className="size-3 text-primary-foreground" />
+                    )}
+                  </View>
+                  <View className="flex-1">
+                    <Text className="font-medium">Clear existing data</Text>
+                    <Text className="text-xs text-muted-foreground">
+                      Delete all current events before importing
+                    </Text>
+                  </View>
+                </Pressable>
+
+                {/* File Input */}
+                <View className="mb-4">
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleImportFile}
+                    style={{ display: 'none' }}
+                    id="import-file-input"
+                  />
+                  <Button
+                    onPress={() => {
+                      // @ts-ignore - web only
+                      if (typeof document !== 'undefined') {
+                        document.getElementById('import-file-input')?.click();
+                      }
+                    }}
+                    className="w-full"
+                  >
+                    <Icon as={UploadIcon} className="size-4 mr-2" />
+                    <Text>Choose File</Text>
+                  </Button>
+                </View>
+
+                <Button
+                  variant="outline"
+                  onPress={() => {
+                    setShowImportDialog(false);
+                    setClearExisting(false);
+                  }}
+                  className="w-full"
+                >
+                  <Text>Cancel</Text>
+                </Button>
+              </>
+            ) : (
+              <>
+                {/* Progress Bar */}
+                <View className="mb-4">
+                  <View className="h-3 bg-muted rounded-full overflow-hidden">
+                    <View
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{ width: `${importProgress}%` }}
+                    />
+                  </View>
+                </View>
+
+                {/* Progress Text */}
+                <Text className="text-center text-muted-foreground mb-2">
+                  {importProgress}% Complete
+                </Text>
+                <Text className="text-center text-sm text-muted-foreground">
+                  {importMessage}
+                </Text>
+              </>
+            )}
           </View>
         </View>
       )}

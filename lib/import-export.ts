@@ -1,0 +1,201 @@
+import { webDb } from '@/db/client.web';
+import type { Event } from '@/types/events';
+
+export interface ExportData {
+  version: string;
+  exportDate: string;
+  events: Event[];
+  eventValues: Array<{
+    eventId: number;
+    date: string;
+    value: string;
+    timestamp: string;
+  }>;
+  settings: {
+    colorScheme?: 'light' | 'dark';
+    [key: string]: any;
+  };
+}
+
+/**
+ * Export all data including events, values, and settings
+ */
+export async function exportData(): Promise<ExportData> {
+  // Get all events
+  const events = await webDb.getEvents();
+
+  // Get all event values
+  const values = await webDb.getAllEventValues();
+  const allEventValues = values.map((v) => ({
+    eventId: v.eventId,
+    date: v.date,
+    value: v.value,
+    timestamp: v.timestamp?.toISOString() || new Date().toISOString(),
+  }));
+
+  // Get settings from localStorage
+  const settings: any = {};
+  try {
+    const colorScheme = localStorage.getItem('color-scheme');
+    if (colorScheme) {
+      settings.colorScheme = colorScheme;
+    }
+  } catch (e) {
+    console.warn('Could not read settings from localStorage:', e);
+  }
+
+  return {
+    version: '1.0.0',
+    exportDate: new Date().toISOString(),
+    events,
+    eventValues: allEventValues,
+    settings,
+  };
+}
+
+/**
+ * Import data and restore events, values, and settings
+ */
+export async function importData(data: ExportData, options: {
+  clearExisting?: boolean;
+  onProgress?: (progress: number, message: string) => void;
+} = {}): Promise<{ success: boolean; message: string }> {
+  const { clearExisting = false, onProgress } = options;
+
+  try {
+    onProgress?.(0, 'Starting import...');
+
+    // Validate data structure
+    if (!data.version || !data.events || !data.eventValues) {
+      throw new Error('Invalid export file format');
+    }
+
+    // Clear existing data if requested
+    if (clearExisting) {
+      onProgress?.(10, 'Clearing existing data...');
+      const existingEvents = await webDb.getEvents();
+      for (const event of existingEvents) {
+        await webDb.deleteEvent(event.id);
+      }
+    }
+
+    onProgress?.(20, 'Importing events...');
+
+    // Create a mapping from old IDs to new IDs
+    const idMapping: Record<number, number> = {};
+
+    // Import events
+    for (let i = 0; i < data.events.length; i++) {
+      const eventData = data.events[i];
+      const oldId = eventData.id;
+
+      // Create event without ID (let DB assign new one)
+      const newEvent = await webDb.createEvent({
+        name: eventData.name,
+        type: eventData.type,
+        unit: eventData.unit,
+        color: eventData.color,
+      });
+
+      idMapping[oldId] = newEvent.id;
+
+      onProgress?.(
+        20 + Math.floor((i / data.events.length) * 30),
+        `Importing events: ${i + 1}/${data.events.length}`
+      );
+    }
+
+    onProgress?.(50, 'Importing event values...');
+
+    // Import event values with new IDs
+    const totalValues = data.eventValues.length;
+    const batchSize = 100;
+
+    for (let i = 0; i < totalValues; i += batchSize) {
+      const batch = data.eventValues.slice(i, Math.min(i + batchSize, totalValues));
+
+      await Promise.all(
+        batch.map(async (valueData) => {
+          const newEventId = idMapping[valueData.eventId];
+          if (newEventId) {
+            await webDb.setEventValue(newEventId, valueData.date, valueData.value);
+          }
+        })
+      );
+
+      onProgress?.(
+        50 + Math.floor((i / totalValues) * 40),
+        `Importing values: ${Math.min(i + batchSize, totalValues)}/${totalValues}`
+      );
+    }
+
+    onProgress?.(90, 'Restoring settings...');
+
+    // Restore settings
+    if (data.settings) {
+      try {
+        if (data.settings.colorScheme) {
+          localStorage.setItem('color-scheme', data.settings.colorScheme);
+        }
+      } catch (e) {
+        console.warn('Could not restore settings:', e);
+      }
+    }
+
+    onProgress?.(100, 'Import complete!');
+
+    return {
+      success: true,
+      message: `Successfully imported ${data.events.length} events and ${data.eventValues.length} values`,
+    };
+  } catch (error) {
+    console.error('Import error:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Import failed',
+    };
+  }
+}
+
+/**
+ * Download export data as JSON file
+ */
+export function downloadExportFile(data: ExportData, filename?: string) {
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename || `life-events-backup-${new Date().toISOString().split('T')[0]}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Read and parse import file
+ */
+export function readImportFile(file: File): Promise<ExportData> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const data = JSON.parse(text);
+        resolve(data);
+      } catch (error) {
+        reject(new Error('Failed to parse import file'));
+      }
+    };
+
+    reader.onerror = () => {
+      reject(new Error('Failed to read file'));
+    };
+
+    reader.readAsText(file);
+  });
+}
