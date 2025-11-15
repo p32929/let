@@ -1,5 +1,6 @@
 import { webDb } from '@/db/client.web';
 import type { Event } from '@/types/events';
+import { storage } from './storage';
 
 export interface ExportData {
   version: string;
@@ -37,15 +38,15 @@ export async function exportData(): Promise<ExportData> {
         : new Date().toISOString(),
   }));
 
-  // Get settings from localStorage
+  // Get settings from storage
   const settings: any = {};
   try {
-    const colorScheme = localStorage.getItem('color-scheme');
+    const colorScheme = await storage.getItem('color-scheme');
     if (colorScheme) {
       settings.colorScheme = colorScheme;
     }
   } catch (e) {
-    console.warn('Could not read settings from localStorage:', e);
+    console.warn('Could not read settings from storage:', e);
   }
 
   return {
@@ -139,7 +140,7 @@ export async function importData(data: ExportData, options: {
     if (data.settings) {
       try {
         if (data.settings.colorScheme) {
-          localStorage.setItem('color-scheme', data.settings.colorScheme);
+          await storage.setItem('color-scheme', data.settings.colorScheme);
         }
       } catch (e) {
         console.warn('Could not restore settings:', e);

@@ -9,6 +9,7 @@ import { useColorScheme } from 'nativewind';
 import { useColorScheme as useSystemColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as React from 'react';
+import { storage } from '@/lib/storage';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -23,7 +24,7 @@ export default function RootLayout() {
   React.useEffect(() => {
     const initializeTheme = async () => {
       // Check if user has manually set a theme preference
-      const storedTheme = localStorage.getItem('nativewind-color-scheme');
+      const storedTheme = await storage.getItem('nativewind-color-scheme');
 
       if (!storedTheme && systemColorScheme) {
         // No stored preference, use system theme
@@ -36,10 +37,13 @@ export default function RootLayout() {
 
   // Update when system theme changes (if no manual override)
   React.useEffect(() => {
-    const storedTheme = localStorage.getItem('nativewind-color-scheme');
-    if (!storedTheme && systemColorScheme) {
-      setColorScheme(systemColorScheme);
-    }
+    const checkTheme = async () => {
+      const storedTheme = await storage.getItem('nativewind-color-scheme');
+      if (!storedTheme && systemColorScheme) {
+        setColorScheme(systemColorScheme);
+      }
+    };
+    checkTheme();
   }, [systemColorScheme]);
 
   const activeColorScheme = colorScheme ?? systemColorScheme ?? 'light';
