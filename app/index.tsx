@@ -304,43 +304,51 @@ export default function HomeScreen() {
 
       {/* Popup Menu */}
       {showMenu && (
-        <>
+        <View className="absolute top-0 left-0 right-0 bottom-0 z-50">
           <Pressable
-            className="absolute inset-0 bg-transparent z-40"
+            className="absolute inset-0 bg-transparent"
             onPress={() => setShowMenu(false)}
           />
-          <View className="absolute right-4 bg-card border border-border rounded-lg shadow-lg min-w-[200px] overflow-hidden z-50" style={{ top: 48 }}>
+          <View
+            className="absolute bg-card border border-border rounded-lg shadow-2xl overflow-hidden"
+            style={{
+              top: 12,
+              right: 16,
+              minWidth: 200,
+              elevation: 8
+            }}
+          >
             <Pressable
-              className="flex-row items-center px-4 py-3 border-b border-border active:bg-muted"
+              className="flex-row items-center px-4 py-3 border-b border-border hover:bg-muted/50 active:bg-muted"
               onPress={() => {
                 setShowMenu(false);
                 router.push('/dashboard' as any);
               }}
             >
               <Icon as={BarChart3Icon} className="size-5 mr-3 text-foreground" />
-              <Text className="text-base">Dashboard</Text>
+              <Text className="text-base text-foreground">Dashboard</Text>
             </Pressable>
             <Pressable
-              className="flex-row items-center px-4 py-3 border-b border-border active:bg-muted"
+              className="flex-row items-center px-4 py-3 border-b border-border hover:bg-muted/50 active:bg-muted"
               onPress={() => {
                 setShowMenu(false);
                 router.push('/reorder-events' as any);
               }}
             >
               <Icon as={ArrowUpDownIcon} className="size-5 mr-3 text-foreground" />
-              <Text className="text-base">Reorder Events</Text>
+              <Text className="text-base text-foreground">Reorder Events</Text>
             </Pressable>
             <Pressable
-              className="flex-row items-center px-4 py-3 active:bg-muted"
+              className="flex-row items-center px-4 py-3 hover:bg-muted/50 active:bg-muted"
               onPress={() => {
                 setColorScheme(colorScheme === 'dark' ? 'light' : 'dark');
               }}
             >
               <Icon as={colorScheme === 'dark' ? SunIcon : MoonIcon} className="size-5 mr-3 text-foreground" />
-              <Text className="text-base">{colorScheme === 'dark' ? 'Light Mode' : 'Dark Mode'}</Text>
+              <Text className="text-base text-foreground">{colorScheme === 'dark' ? 'Light Mode' : 'Dark Mode'}</Text>
             </Pressable>
           </View>
-        </>
+        </View>
       )}
 
       {/* Sample Data Prompt Dialog */}
