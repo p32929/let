@@ -6,8 +6,8 @@ import { View, ScrollView, Dimensions, Platform } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getEventValuesForDateRange } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
-import { LineChart } from 'react-native-svg-charts';
-import * as shape from 'd3-shape';
+import { CartesianChart, Line, useChartPressState } from 'victory-native';
+import { Circle, useFont } from '@shopify/react-native-skia';
 import type { Event } from '@/types/events';
 
 const screenWidth = Dimensions.get('window').width;
@@ -664,48 +664,28 @@ export default function DashboardScreen() {
           </View>
 
           {/* Combined chart with all lines */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={Platform.OS === 'web'}
-            style={{ height: 250 }}
-            contentContainerStyle={{ minWidth: '100%' }}
-          >
-            <View style={{ height: 250, width: chartWidth, position: 'relative' }}>
-              {[...numericEvents, ...stringEvents].map(({ event, dataPoints }, index) => {
-                // Normalize data to 0-100 scale
-                const values = dataPoints.map((d) => {
-                  if (typeof d.value === 'number') return d.value;
-                  // For string events, use the normalized position from combinedChartData
-                  const point = combinedChartData.find(cd => cd.fullDate === d.date);
-                  return point?.[event.name] || 0;
-                });
-
-                const min = Math.min(...values.filter(v => typeof v === 'number'));
-                const max = Math.max(...values.filter(v => typeof v === 'number'));
-                const range = max - min || 1;
-                const normalizedData = values.map(v =>
-                  typeof v === 'number' ? ((v - min) / range) * 100 : 0
-                );
-
-                return (
-                  <LineChart
-                    key={event.id}
-                    style={{
-                      height: 250,
-                      width: chartWidth,
-                      position: index === 0 ? 'relative' : 'absolute',
-                      top: 0,
-                      left: 0,
-                    }}
-                    data={normalizedData}
-                    svg={{ stroke: event.color, strokeWidth: 2 }}
-                    contentInset={{ top: 20, bottom: 20 }}
-                    curve={shape.curveNatural}
-                  />
-                );
-              })}
-            </View>
-          </ScrollView>
+          <View style={{ height: 250, width: '100%' }}>
+            <CartesianChart
+              data={combinedChartData}
+              xKey="date"
+              yKeys={[...numericEvents, ...stringEvents].map(({ event }) => event.name)}
+              domainPadding={{ left: 20, right: 20, top: 20, bottom: 20 }}
+            >
+              {({ points }) => (
+                <>
+                  {[...numericEvents, ...stringEvents].map(({ event }) => (
+                    <Line
+                      key={event.id}
+                      points={points[event.name]}
+                      color={event.color}
+                      strokeWidth={2}
+                      animate={{ type: 'timing', duration: 300 }}
+                    />
+                  ))}
+                </>
+              )}
+            </CartesianChart>
+          </View>
         </View>
 
         <Text className="text-xs text-muted-foreground mt-3">

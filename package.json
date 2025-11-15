@@ -38,6 +38,7 @@
     "@rn-primitives/toggle": "^1.2.0",
     "@rn-primitives/toggle-group": "^1.2.0",
     "@rn-primitives/tooltip": "^1.2.0",
+    "@shopify/react-native-skia": "2.2.12",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
@@ -66,6 +67,7 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^3.4.14",
     "tailwindcss-animate": "^1.0.7",
+    "victory-native": "^41.20.2",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
