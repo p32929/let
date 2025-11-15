@@ -105,13 +105,10 @@ export function EventTracker({ event, date }: EventTrackerProps) {
     : value.trim() !== '';
 
   return (
-    <View
-      className="bg-card border-border rounded-lg p-3 flex-row items-center"
-      style={{ borderLeftWidth: 3, borderLeftColor: event.color }}
-    >
+    <View className="bg-card border border-border rounded-lg p-3 flex-row items-center" style={{ borderLeftWidth: 4, borderLeftColor: event.color }}>
       {/* Event Name */}
       <View className="flex-1 mr-3">
-        <Text className="font-medium text-base">{event.name}</Text>
+        <Text className="font-semibold text-base">{event.name}</Text>
         {event.unit && (
           <Text className="text-xs text-muted-foreground">{event.unit}</Text>
         )}
@@ -132,27 +129,25 @@ export function EventTracker({ event, date }: EventTrackerProps) {
           <>
             <Button
               size="icon"
-              variant="ghost"
+              variant="outline"
               onPress={handleNumberDecrement}
               disabled={value === '' || Number(value) <= 0}
-              className="h-8 w-8"
+              className="h-10 w-10"
             >
               <Icon as={MinusIcon} className="size-4" />
             </Button>
-            <View className="bg-muted/40 rounded-md px-3 min-w-[60px]">
-              <Input
-                value={value}
-                onChangeText={handleNumberChange}
-                keyboardType="numeric"
-                placeholder="0"
-                className="text-center native:h-8 text-base font-semibold p-0 bg-transparent border-0"
-              />
-            </View>
+            <Input
+              value={value}
+              onChangeText={handleNumberChange}
+              keyboardType="numeric"
+              placeholder="0"
+              className="text-center native:h-10 w-20 text-base font-semibold"
+            />
             <Button
               size="icon"
-              variant="ghost"
+              variant="outline"
               onPress={handleNumberIncrement}
-              className="h-8 w-8"
+              className="h-10 w-10"
             >
               <Icon as={PlusIcon} className="size-4" />
             </Button>
@@ -165,7 +160,7 @@ export function EventTracker({ event, date }: EventTrackerProps) {
             value={value}
             onChangeText={handleTextChange}
             placeholder="Enter text..."
-            className="native:h-8 w-32 text-sm"
+            className="native:h-10 w-40 text-sm"
           />
         )}
 
@@ -174,7 +169,7 @@ export function EventTracker({ event, date }: EventTrackerProps) {
           size="icon"
           variant="ghost"
           onPress={() => router.push({ pathname: '/edit-event' as any, params: { id: event.id.toString() } })}
-          className="h-8 w-8"
+          className="h-10 w-10"
         >
           <Icon as={Settings2Icon} className="size-4 text-muted-foreground" />
         </Button>
