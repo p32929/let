@@ -1,6 +1,10 @@
 import { getEvents, getEventValuesForDate } from '@/db/operations/events';
 import type { Event } from '@/types/events';
 import { storage } from './storage';
+import { Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
 
 export interface ExportData {
   version: string;
@@ -166,44 +170,105 @@ export async function importData(data: ExportData, options: {
 }
 
 /**
- * Download export data as JSON file
+ * Download export data as JSON file (works on web, iOS, and Android)
  */
-export function downloadExportFile(data: ExportData, filename?: string) {
+export async function downloadExportFile(data: ExportData, filename?: string) {
   const json = JSON.stringify(data, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
+  const defaultFilename = filename || `life-events-backup-${new Date().toISOString().split('T')[0]}.json`;
 
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename || `life-events-backup-${new Date().toISOString().split('T')[0]}.json`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  if (Platform.OS === 'web') {
+    // Web platform: use Blob and URL
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
 
-  URL.revokeObjectURL(url);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = defaultFilename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
+  } else {
+    // iOS/Android: use FileSystem and Sharing
+    const fileUri = FileSystem.documentDirectory + defaultFilename;
+
+    try {
+      await FileSystem.writeAsStringAsync(fileUri, json, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+
+      // Check if sharing is available
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (isAvailable) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'application/json',
+          dialogTitle: 'Save backup file',
+          UTI: 'public.json',
+        });
+      } else {
+        console.warn('Sharing is not available on this device');
+      }
+    } catch (error) {
+      console.error('Failed to save file:', error);
+      throw error;
+    }
+  }
 }
 
 /**
- * Read and parse import file
+ * Read and parse import file (works on web, iOS, and Android)
  */
-export function readImportFile(file: File): Promise<ExportData> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+export async function readImportFile(file?: File): Promise<ExportData> {
+  if (Platform.OS === 'web') {
+    // Web platform: use FileReader
+    if (!file) {
+      throw new Error('File is required for web platform');
+    }
 
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result as string;
-        const data = JSON.parse(text);
-        resolve(data);
-      } catch (error) {
-        reject(new Error('Failed to parse import file'));
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        try {
+          const text = e.target?.result as string;
+          const data = JSON.parse(text);
+          resolve(data);
+        } catch (error) {
+          reject(new Error('Failed to parse import file'));
+        }
+      };
+
+      reader.onerror = () => {
+        reject(new Error('Failed to read file'));
+      };
+
+      reader.readAsText(file);
+    });
+  } else {
+    // iOS/Android: use DocumentPicker and FileSystem
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/json',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        throw new Error('No file selected');
       }
-    };
 
-    reader.onerror = () => {
-      reject(new Error('Failed to read file'));
-    };
+      const fileUri = result.assets[0].uri;
+      const content = await FileSystem.readAsStringAsync(fileUri, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
 
-    reader.readAsText(file);
-  });
+      const data = JSON.parse(content);
+      return data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to read import file');
+    }
+  }
 }

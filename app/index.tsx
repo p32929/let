@@ -146,15 +146,18 @@ export default function HomeScreen() {
     try {
       setShowMenu(false);
       const data = await exportData();
-      downloadExportFile(data);
+      await downloadExportFile(data);
     } catch (error) {
       console.error('Failed to export data:', error);
     }
   };
 
-  const handleImportFile = async (event: any) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const handleImportFile = async (event?: any) => {
+    // For web, get the file from the event. For mobile, readImportFile handles document picking.
+    const file = Platform.OS === 'web' ? event?.target?.files?.[0] : undefined;
+
+    // For web, if no file was selected, return early
+    if (Platform.OS === 'web' && !file) return;
 
     try {
       setImportingData(true);
@@ -568,14 +571,14 @@ export default function HomeScreen() {
                         // @ts-ignore - web only
                         document.getElementById('import-file-input')?.click();
                       } else {
-                        // TODO: Implement file picker for mobile
-                        console.log('File import not yet supported on mobile');
+                        // On mobile, readImportFile will open document picker
+                        handleImportFile();
                       }
                     }}
                     className="w-full"
                   >
                     <Icon as={UploadIcon} className="size-4 mr-2" />
-                    <Text>Choose File{Platform.OS !== 'web' ? ' (Web Only)' : ''}</Text>
+                    <Text>Choose File</Text>
                   </Button>
                 </View>
 
