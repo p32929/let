@@ -560,7 +560,9 @@ export default function DashboardScreen() {
     return 'Low confidence';
   };
 
-  const renderCombinedChart = () => {
+  const CombinedChart = () => {
+    const { state: chartPressState, isActive } = useChartPressState({ x: 0, y: {} });
+
     if (chartData.length === 0) return null;
 
     // Get numeric and string events separately
@@ -670,6 +672,7 @@ export default function DashboardScreen() {
               xKey="date"
               yKeys={[...numericEvents, ...stringEvents].map(({ event }) => event.name)}
               domainPadding={{ left: 20, right: 20, top: 20, bottom: 20 }}
+              chartPressState={chartPressState}
             >
               {({ points }) => (
                 <>
@@ -682,10 +685,54 @@ export default function DashboardScreen() {
                       animate={{ type: 'timing', duration: 300 }}
                     />
                   ))}
+                  {/* Show tooltip on press */}
+                  {isActive && (
+                    <>
+                      {[...numericEvents, ...stringEvents].map(({ event }) => {
+                        const point = (chartPressState.y as any)[event.name];
+                        if (!point) return null;
+                        return (
+                          <Circle
+                            key={`tooltip-${event.id}`}
+                            cx={chartPressState.x.position}
+                            cy={point.position}
+                            r={6}
+                            color={event.color}
+                            opacity={0.8}
+                          />
+                        );
+                      })}
+                    </>
+                  )}
                 </>
               )}
             </CartesianChart>
           </View>
+
+          {/* Tooltip information */}
+          {isActive && (
+            <View className="mt-2 p-3 bg-card border border-border rounded-lg">
+              <Text className="text-sm font-semibold mb-1">
+                {combinedChartData[Math.round(chartPressState.x.value as any)]?.date || 'N/A'}
+              </Text>
+              {[...numericEvents, ...stringEvents].map(({ event }) => {
+                const value = (chartPressState.y as any)[event.name]?.value;
+                if (value === undefined) return null;
+                return (
+                  <View key={event.id} className="flex-row items-center mt-1">
+                    <View
+                      className="w-3 h-3 rounded-full mr-2"
+                      style={{ backgroundColor: event.color }}
+                    />
+                    <Text className="text-xs">
+                      {event.name}: {value.toFixed(1)}%
+                      {event.unit && ` (${event.unit})`}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         <Text className="text-xs text-muted-foreground mt-3">
@@ -770,7 +817,7 @@ export default function DashboardScreen() {
                   </Text>
                 </Button>
               </View>
-              {renderCombinedChart()}
+              <CombinedChart />
             </View>
 
             {/* Patterns Section */}

@@ -2,7 +2,7 @@ import { getEvents, getEventValuesForDate } from '@/db/operations/events';
 import type { Event } from '@/types/events';
 import { storage } from './storage';
 import { Platform } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 
@@ -190,18 +190,16 @@ export async function downloadExportFile(data: ExportData, filename?: string) {
 
     URL.revokeObjectURL(url);
   } else {
-    // iOS/Android: use FileSystem and Sharing
-    const fileUri = FileSystem.documentDirectory + defaultFilename;
-
+    // iOS/Android: use File and Sharing
     try {
-      await FileSystem.writeAsStringAsync(fileUri, json, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      const file = new File(Paths.document, defaultFilename);
+      file.create();
+      file.write(json);
 
       // Check if sharing is available
       const isAvailable = await Sharing.isAvailableAsync();
       if (isAvailable) {
-        await Sharing.shareAsync(fileUri, {
+        await Sharing.shareAsync(file.uri, {
           mimeType: 'application/json',
           dialogTitle: 'Save backup file',
           UTI: 'public.json',
@@ -246,7 +244,7 @@ export async function readImportFile(file?: File): Promise<ExportData> {
       reader.readAsText(file);
     });
   } else {
-    // iOS/Android: use DocumentPicker and FileSystem
+    // iOS/Android: use DocumentPicker and File
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/json',
@@ -258,9 +256,8 @@ export async function readImportFile(file?: File): Promise<ExportData> {
       }
 
       const fileUri = result.assets[0].uri;
-      const content = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      const file = new File(fileUri);
+      const content = await file.text();
 
       const data = JSON.parse(content);
       return data;
