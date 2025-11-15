@@ -30,7 +30,11 @@ export async function exportData(): Promise<ExportData> {
     eventId: v.eventId,
     date: v.date,
     value: v.value,
-    timestamp: v.timestamp?.toISOString() || new Date().toISOString(),
+    timestamp: v.timestamp instanceof Date
+      ? v.timestamp.toISOString()
+      : typeof v.timestamp === 'string'
+        ? v.timestamp
+        : new Date().toISOString(),
   }));
 
   // Get settings from localStorage
