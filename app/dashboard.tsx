@@ -6,9 +6,32 @@ import { View, ScrollView, Dimensions, Platform } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getEventValuesForDateRange } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
-import { CartesianChart, Line, useChartPressState } from 'victory-native';
-import { Circle, useFont } from '@shopify/react-native-skia';
 import type { Event } from '@/types/events';
+
+// Platform-specific imports
+let CartesianChart: any, Line: any, useChartPressState: any, Circle: any, useFont: any;
+let LineChart: any, ResponsiveContainer: any, XAxis: any, YAxis: any, Tooltip: any, Legend: any, RechartsLine: any;
+
+if (Platform.OS === 'web') {
+  // Recharts for web
+  const recharts = require('recharts');
+  LineChart = recharts.LineChart;
+  ResponsiveContainer = recharts.ResponsiveContainer;
+  XAxis = recharts.XAxis;
+  YAxis = recharts.YAxis;
+  Tooltip = recharts.Tooltip;
+  Legend = recharts.Legend;
+  RechartsLine = recharts.Line;
+} else {
+  // Victory Native for mobile
+  const victoryNative = require('victory-native');
+  const skia = require('@shopify/react-native-skia');
+  CartesianChart = victoryNative.CartesianChart;
+  Line = victoryNative.Line;
+  useChartPressState = victoryNative.useChartPressState;
+  Circle = skia.Circle;
+  useFont = skia.useFont;
+}
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -561,7 +584,12 @@ export default function DashboardScreen() {
   };
 
   const CombinedChart = () => {
-    const { state: chartPressState, isActive } = useChartPressState({ x: 0, y: {} });
+    // Mobile-only hooks
+    const chartPressState = Platform.OS !== 'web' ? useChartPressState({ x: 0, y: {} }).state : null;
+    const isActive = Platform.OS !== 'web' ? useChartPressState({ x: 0, y: {} }).isActive : false;
+
+    // Web-only tooltip state
+    const [webTooltip, setWebTooltip] = React.useState<{ active?: boolean; payload?: any; label?: string } | null>(null);
 
     if (chartData.length === 0) return null;
 
@@ -666,72 +694,122 @@ export default function DashboardScreen() {
           </View>
 
           {/* Combined chart with all lines */}
-          <View style={{ height: 250, width: '100%' }}>
-            <CartesianChart
-              data={combinedChartData}
-              xKey="date"
-              yKeys={[...numericEvents, ...stringEvents].map(({ event }) => event.name)}
-              domainPadding={{ left: 20, right: 20, top: 20, bottom: 20 }}
-              chartPressState={chartPressState}
-            >
-              {({ points }) => (
-                <>
+          {Platform.OS === 'web' ? (
+            // Web: Use Recharts
+            <View style={{ height: 250, width: '100%' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={combinedChartData}>
+                  <XAxis dataKey="date" stroke="#888" fontSize={10} />
+                  <YAxis stroke="#888" fontSize={10} domain={[0, 100]} />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <View className="p-3 bg-card border border-border rounded-lg">
+                            <Text className="text-sm font-semibold mb-1">{label}</Text>
+                            {payload.map((entry: any) => (
+                              <View key={entry.dataKey} className="flex-row items-center mt-1">
+                                <View
+                                  className="w-3 h-3 rounded-full mr-2"
+                                  style={{ backgroundColor: entry.color }}
+                                />
+                                <Text className="text-xs">
+                                  {entry.dataKey}: {entry.value?.toFixed(1)}%
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Legend />
                   {[...numericEvents, ...stringEvents].map(({ event }) => (
-                    <Line
+                    <RechartsLine
                       key={event.id}
-                      points={points[event.name]}
-                      color={event.color}
+                      type="monotone"
+                      dataKey={event.name}
+                      stroke={event.color}
                       strokeWidth={2}
-                      animate={{ type: 'timing', duration: 300 }}
+                      dot={false}
+                      activeDot={{ r: 6 }}
                     />
                   ))}
-                  {/* Show tooltip on press */}
-                  {isActive && (
+                </LineChart>
+              </ResponsiveContainer>
+            </View>
+          ) : (
+            // Mobile: Use Victory Native
+            <>
+              <View style={{ height: 250, width: '100%' }}>
+                <CartesianChart
+                  data={combinedChartData}
+                  xKey="date"
+                  yKeys={[...numericEvents, ...stringEvents].map(({ event }) => event.name)}
+                  domainPadding={{ left: 20, right: 20, top: 20, bottom: 20 }}
+                  chartPressState={chartPressState}
+                >
+                  {({ points }) => (
                     <>
-                      {[...numericEvents, ...stringEvents].map(({ event }) => {
-                        const point = (chartPressState.y as any)[event.name];
-                        if (!point) return null;
-                        return (
-                          <Circle
-                            key={`tooltip-${event.id}`}
-                            cx={chartPressState.x.position}
-                            cy={point.position}
-                            r={6}
-                            color={event.color}
-                            opacity={0.8}
-                          />
-                        );
-                      })}
+                      {[...numericEvents, ...stringEvents].map(({ event }) => (
+                        <Line
+                          key={event.id}
+                          points={points[event.name]}
+                          color={event.color}
+                          strokeWidth={2}
+                          animate={{ type: 'timing', duration: 300 }}
+                        />
+                      ))}
+                      {/* Show tooltip on press */}
+                      {isActive && chartPressState && (
+                        <>
+                          {[...numericEvents, ...stringEvents].map(({ event }) => {
+                            const point = (chartPressState.y as any)[event.name];
+                            if (!point) return null;
+                            return (
+                              <Circle
+                                key={`tooltip-${event.id}`}
+                                cx={chartPressState.x.position}
+                                cy={point.position}
+                                r={6}
+                                color={event.color}
+                                opacity={0.8}
+                              />
+                            );
+                          })}
+                        </>
+                      )}
                     </>
                   )}
-                </>
-              )}
-            </CartesianChart>
-          </View>
+                </CartesianChart>
+              </View>
 
-          {/* Tooltip information */}
-          {isActive && (
-            <View className="mt-2 p-3 bg-card border border-border rounded-lg">
-              <Text className="text-sm font-semibold mb-1">
-                {combinedChartData[Math.round(chartPressState.x.value as any)]?.date || 'N/A'}
-              </Text>
-              {[...numericEvents, ...stringEvents].map(({ event }) => {
-                const value = (chartPressState.y as any)[event.name]?.value;
-                if (value === undefined) return null;
-                return (
-                  <View key={event.id} className="flex-row items-center mt-1">
-                    <View
-                      className="w-3 h-3 rounded-full mr-2"
-                      style={{ backgroundColor: event.color }}
-                    />
-                    <Text className="text-xs">
-                      {event.name}: {value.toFixed(1)}%
-                      {event.unit && ` (${event.unit})`}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
+              {/* Tooltip information for mobile */}
+              {isActive && chartPressState && (
+                <View className="mt-2 p-3 bg-card border border-border rounded-lg">
+                  <Text className="text-sm font-semibold mb-1">
+                    {combinedChartData[Math.round(chartPressState.x.value as any)]?.date || 'N/A'}
+                  </Text>
+                  {[...numericEvents, ...stringEvents].map(({ event }) => {
+                    const value = (chartPressState.y as any)[event.name]?.value;
+                    if (value === undefined) return null;
+                    return (
+                      <View key={event.id} className="flex-row items-center mt-1">
+                        <View
+                          className="w-3 h-3 rounded-full mr-2"
+                          style={{ backgroundColor: event.color }}
+                        />
+                        <Text className="text-xs">
+                          {event.name}: {value.toFixed(1)}%
+                          {event.unit && ` (${event.unit})`}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </>
           )}
         </View>
 
