@@ -41,6 +41,12 @@ export function Calendar({ selectedDate, onSelectDate, onClose }: CalendarProps)
       days.push(new Date(year, month, day));
     }
 
+    // Add empty cells to complete the last week (total should be multiple of 7)
+    const remainingCells = (7 - (days.length % 7)) % 7;
+    for (let i = 0; i < remainingCells; i++) {
+      days.push(null);
+    }
+
     return days;
   };
 
