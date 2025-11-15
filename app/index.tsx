@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Stack, router } from 'expo-router';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircle2Icon, CircleIcon } from 'lucide-react-native';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon } from 'lucide-react-native';
 import * as React from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -252,27 +252,19 @@ export default function HomeScreen() {
                     </Text>
                     {/* Completion indicator */}
                     {completion && completion.total > 0 && (
-                      <View className="mt-1 flex-row items-center gap-0.5">
+                      <View className="mt-1">
                         {completionPercent === 100 ? (
-                          <Icon
-                            as={CheckCircle2Icon}
-                            className={`size-3 ${selected ? 'text-primary-foreground' : 'text-green-500'}`}
-                          />
+                          <View className={`w-4 h-4 rounded-full items-center justify-center ${selected ? 'bg-primary-foreground' : 'bg-green-500'}`}>
+                            <Text className={`text-[10px] font-bold ${selected ? 'text-primary' : 'text-white'}`}>✓</Text>
+                          </View>
                         ) : completionPercent > 0 ? (
-                          <View className="flex-row items-center">
-                            <Icon
-                              as={CircleIcon}
-                              className={`size-2 ${selected ? 'text-primary-foreground' : 'text-yellow-500'}`}
-                            />
-                            <Text className={`text-[10px] ml-0.5 ${selected ? 'text-primary-foreground' : 'text-muted-foreground'}`}>
+                          <View className="items-center">
+                            <Text className={`text-[9px] font-medium ${selected ? 'text-primary-foreground' : 'text-orange-500'}`}>
                               {completion.completed}/{completion.total}
                             </Text>
                           </View>
                         ) : (
-                          <Icon
-                            as={CircleIcon}
-                            className={`size-2 ${selected ? 'text-primary-foreground/50' : 'text-muted-foreground/50'}`}
-                          />
+                          <View className={`w-3 h-3 rounded-full border-2 ${selected ? 'border-primary-foreground/50' : 'border-muted-foreground/30'}`} />
                         )}
                       </View>
                     )}
