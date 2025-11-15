@@ -21,15 +21,33 @@ export default function RootLayout() {
 
   // Initialize with system theme on first load
   React.useEffect(() => {
-    if (systemColorScheme && !colorScheme) {
+    const initializeTheme = async () => {
+      // Check if user has manually set a theme preference
+      const storedTheme = localStorage.getItem('nativewind-color-scheme');
+
+      if (!storedTheme && systemColorScheme) {
+        // No stored preference, use system theme
+        setColorScheme(systemColorScheme);
+      }
+    };
+
+    initializeTheme();
+  }, []);
+
+  // Update when system theme changes (if no manual override)
+  React.useEffect(() => {
+    const storedTheme = localStorage.getItem('nativewind-color-scheme');
+    if (!storedTheme && systemColorScheme) {
       setColorScheme(systemColorScheme);
     }
   }, [systemColorScheme]);
 
+  const activeColorScheme = colorScheme ?? systemColorScheme ?? 'light';
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={NAV_THEME[colorScheme ?? systemColorScheme ?? 'light']}>
-        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+      <ThemeProvider value={NAV_THEME[activeColorScheme]}>
+        <StatusBar style={activeColorScheme === 'dark' ? 'light' : 'dark'} />
         <Stack />
         <PortalHost />
       </ThemeProvider>
