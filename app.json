@@ -20,11 +20,14 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.lifeeventstracker.app",
+      "versionCode": 1,
       "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": []
     },
     "web": {
       "bundler": "metro",

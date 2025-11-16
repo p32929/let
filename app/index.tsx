@@ -511,7 +511,7 @@ export default function HomeScreen() {
             className="absolute inset-0 bg-transparent"
             onPress={() => setShowCalendar(false)}
           />
-          <View className="w-full" style={{ width: '80%' }}>
+          <View className="w-full max-w-sm">
             <Calendar
               selectedDate={selectedDate}
               onSelectDate={handleCalendarDateSelect}
