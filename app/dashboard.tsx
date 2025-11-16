@@ -924,7 +924,7 @@ export default function DashboardScreen() {
                         }}
                       />
                       <Text style={{ color: '#000', fontSize: 12, flex: 1 }}>
-                        {event.name}: {displayValue}
+                        {event.name}: {displayValue}{event.unit ? ` ${event.unit}` : ''}
                       </Text>
                     </View>
                   );
