@@ -462,7 +462,41 @@ export default function DashboardScreen() {
       }
     }
 
-    return mergedPatterns.sort((a, b) => b.confidence - a.confidence);
+    // DEDUPLICATION: Remove patterns that share >70% of the same events
+    const deduplicated: Pattern[] = [];
+
+    for (const pattern of mergedPatterns) {
+      let isDuplicate = false;
+
+      for (const existing of deduplicated) {
+        // Get event IDs for comparison
+        const patternEventIds = new Set(pattern.events.map(e => e.id));
+        const existingEventIds = new Set(existing.events.map(e => e.id));
+
+        // Calculate overlap
+        const intersection = new Set([...patternEventIds].filter(x => existingEventIds.has(x)));
+        const union = new Set([...patternEventIds, ...existingEventIds]);
+        const overlapRatio = intersection.size / Math.min(patternEventIds.size, existingEventIds.size);
+
+        // If >70% overlap, it's a duplicate - keep the one with higher confidence
+        if (overlapRatio > 0.7) {
+          isDuplicate = true;
+
+          // Replace existing with new if new has higher confidence
+          if (pattern.confidence > existing.confidence) {
+            const index = deduplicated.indexOf(existing);
+            deduplicated[index] = pattern;
+          }
+          break;
+        }
+      }
+
+      if (!isDuplicate) {
+        deduplicated.push(pattern);
+      }
+    }
+
+    return deduplicated.sort((a, b) => b.confidence - a.confidence);
   };
 
   const getConfidenceColor = (confidence: number) => {
