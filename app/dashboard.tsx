@@ -3,30 +3,14 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Stack } from 'expo-router';
 import * as React from 'react';
-import { View, ScrollView, Dimensions, Platform, Pressable, Modal } from 'react-native';
+import { View, ScrollView, Dimensions, Pressable, Modal } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getEventValuesForDateRange } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
 import type { Event } from '@/types/events';
 
-// Platform-specific imports
-let LineChart: any, ResponsiveContainer: any, XAxis: any, YAxis: any, Tooltip: any, RechartsLine: any;
-let ChartLineChart: any;
-
-if (Platform.OS === 'web') {
-  // Recharts for web
-  const recharts = require('recharts');
-  LineChart = recharts.LineChart;
-  ResponsiveContainer = recharts.ResponsiveContainer;
-  XAxis = recharts.XAxis;
-  YAxis = recharts.YAxis;
-  Tooltip = recharts.Tooltip;
-  RechartsLine = recharts.Line;
-} else {
-  // react-native-chart-kit for mobile
-  const chartKit = require('react-native-chart-kit');
-  ChartLineChart = chartKit.LineChart;
-}
+// React Native SVG - True cross-platform charting
+import Svg, { Line as SvgLine, Circle, G } from 'react-native-svg';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -573,7 +557,7 @@ export default function DashboardScreen() {
 
   const CombinedChart = () => {
     // State for mobile tooltip
-    const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number; visible: boolean; data: any } | null>(null);
+    const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number; visible: boolean; data: any; date: string } | null>(null);
 
     // Calculate data
     const numericEvents = chartData.filter((d) => d.event.type !== 'string' && d.dataPoints.length > 0);
@@ -673,136 +657,72 @@ export default function DashboardScreen() {
             ))}
           </View>
 
-          {/* Combined chart with all lines */}
-          {Platform.OS === 'web' ? (
-            // Web: Use Recharts
-            <View style={{ height: 250, width: '100%' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={combinedChartData}>
-                  <XAxis dataKey="date" stroke="#888" fontSize={10} />
-                  <YAxis stroke="#888" fontSize={10} domain={[0, 100]} />
-                  <Tooltip
-                    content={({ active, payload, label }: any) => {
-                      if (active && payload && payload.length) {
-                        const tooltipContent = `
-                          <div style="
-                            background-color: rgb(255, 255, 255);
-                            opacity: 1 !important;
-                            padding: 12px;
-                            border-radius: 8px;
-                            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-                          ">
-                            <div style="font-size: 13px; font-weight: bold; margin-bottom: 4px; color: #000;">${label}</div>
-                            ${payload.map((entry: any) => {
-                              // Get original value from the data point
-                              const originalValue = entry.payload[entry.dataKey + '_original'];
-                              // Use original if it exists, otherwise show the normalized value
-                              const displayValue = (originalValue !== undefined && originalValue !== null)
-                                ? originalValue
-                                : entry.value?.toFixed(1);
+          {/* Combined chart with all lines - Custom SVG (True cross-platform) */}
+          <View style={{ height: 250, width: '100%' }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              <View style={{ width: Math.max(screenWidth - 32, combinedChartData.length * 50), height: 250 }}>
+                <Svg width={Math.max(screenWidth - 32, combinedChartData.length * 50)} height={250}>
+                  <G>
+                    {/* Render lines for each event */}
+                    {[...numericEvents, ...stringEvents].map(({ event }) => {
+                      // Create path points for this event's line
+                      const points: Array<{ x: number; y: number }> = [];
 
-                              return `
-                              <div style="display: flex; align-items: center; margin-top: 4px;">
-                                <div style="
-                                  width: 12px;
-                                  height: 12px;
-                                  border-radius: 6px;
-                                  margin-right: 8px;
-                                  background-color: ${entry.color};
-                                "></div>
-                                <span style="font-size: 12px; color: #000;">
-                                  ${entry.dataKey}: ${displayValue}
-                                </span>
-                              </div>
-                              `;
-                            }).join('')}
-                          </div>
-                        `;
-                        return <div dangerouslySetInnerHTML={{ __html: tooltipContent }} />;
-                      }
-                      return null;
-                    }}
-                    wrapperStyle={{
-                      opacity: '1 !important',
-                      backgroundColor: '#FFFFFF',
-                      border: 'none',
-                      outline: 'none'
-                    }}
-                    cursor={false}
-                  />
-                  {[...numericEvents, ...stringEvents].map(({ event }) => (
-                    <RechartsLine
-                      key={event.id}
-                      type="monotone"
-                      dataKey={event.name}
-                      stroke={event.color}
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 6 }}
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
-            </View>
-          ) : (
-            // Mobile: Use react-native-chart-kit
-            <View style={{ overflow: 'visible' }}>
-              <ScrollView horizontal showsHorizontalScrollIndicator>
-                <ChartLineChart
-                  data={{
-                    labels: combinedChartData.map(d => d.date),
-                    datasets: [...numericEvents, ...stringEvents].map(({ event }) => ({
-                      data: combinedChartData.map(d => d[event.name] || 0),
-                      color: (_opacity = 1) => event.color,
-                      strokeWidth: 2,
-                    }))
-                  }}
-                  width={Math.max(screenWidth - 32, combinedChartData.length * 50)}
-                  height={250}
-                  chartConfig={{
-                    backgroundColor: '#ffffff',
-                    backgroundGradientFrom: '#ffffff',
-                    backgroundGradientTo: '#ffffff',
-                    backgroundGradientFromOpacity: 0,
-                    backgroundGradientToOpacity: 0,
-                    decimalPlaces: 1,
-                    color: (opacity = 1) => `rgba(136, 136, 136, ${opacity})`,
-                    labelColor: (opacity = 1) => `rgba(136, 136, 136, ${opacity})`,
-                    style: {
-                      borderRadius: 0
-                    },
-                    propsForDots: {
-                      r: "4",
-                      strokeWidth: "2",
-                    }
-                  }}
-                  withShadow={false}
-                  withInnerLines={false}
-                  withVerticalLines={false}
-                  withHorizontalLines={false}
-                  bezier
-                  style={{
-                    marginVertical: 8,
-                    borderRadius: 0,
-                    paddingRight: 0
-                  }}
-                  decorator={() => null}
-                  onDataPointClick={(data: any) => {
-                    // Show tooltip on click
-                    const dataPoint = combinedChartData[data.index];
-                    if (dataPoint) {
-                      setTooltipPos({
-                        x: data.x,
-                        y: data.y,
-                        visible: true,
-                        data: dataPoint,
+                      combinedChartData.forEach((dataPoint, index) => {
+                        const value = dataPoint[event.name];
+                        if (value !== undefined && value !== null) {
+                          const x = 40 + (index * (Math.max(screenWidth - 72, combinedChartData.length * 50 - 40) / (combinedChartData.length - 1)));
+                          const y = 210 - (value * 1.8); // Scale: 0-100 maps to 210-30 (inverted Y axis)
+                          points.push({ x, y });
+                        }
                       });
-                    }
-                  }}
-                />
-              </ScrollView>
-            </View>
-          )}
+
+                      // Draw line segments
+                      return (
+                        <G key={event.id}>
+                          {points.map((point, i) => {
+                            if (i === 0) return null;
+                            const prevPoint = points[i - 1];
+                            return (
+                              <SvgLine
+                                key={`${event.id}-line-${i}`}
+                                x1={prevPoint.x}
+                                y1={prevPoint.y}
+                                x2={point.x}
+                                y2={point.y}
+                                stroke={event.color}
+                                strokeWidth={2}
+                              />
+                            );
+                          })}
+                          {/* Draw clickable circles at data points */}
+                          {points.map((point, i) => (
+                            <Circle
+                              key={`${event.id}-point-${i}`}
+                              cx={point.x}
+                              cy={point.y}
+                              r={4}
+                              fill={event.color}
+                              onPress={() => {
+                                const dataPoint = combinedChartData[i];
+                                setTooltipPos({
+                                  x: point.x,
+                                  y: point.y,
+                                  visible: true,
+                                  data: dataPoint,
+                                  date: dataPoint.date
+                                });
+                              }}
+                            />
+                          ))}
+                        </G>
+                      );
+                    })}
+                  </G>
+                </Svg>
+              </View>
+            </ScrollView>
+          </View>
         </View>
 
         {/* Tooltip Modal - renders on top of everything */}
@@ -844,6 +764,13 @@ export default function DashboardScreen() {
                 {[...numericEvents, ...stringEvents].map(({ event }) => {
                   const value = tooltipPos.data[event.name];
                   if (value === undefined || value === null) return null;
+
+                  // Get original value
+                  const originalValue = tooltipPos.data[event.name + '_original'];
+                  const displayValue = (originalValue !== undefined && originalValue !== null)
+                    ? originalValue
+                    : value.toFixed(1);
+
                   return (
                     <View key={event.id} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
                       <View
@@ -856,7 +783,7 @@ export default function DashboardScreen() {
                         }}
                       />
                       <Text style={{ color: '#000', fontSize: 12, flex: 1 }}>
-                        {event.name}: {value.toFixed(1)}%
+                        {event.name}: {displayValue}
                       </Text>
                     </View>
                   );
