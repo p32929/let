@@ -693,7 +693,15 @@ export default function DashboardScreen() {
                             box-shadow: 0 4px 8px rgba(0,0,0,0.3);
                           ">
                             <div style="font-size: 13px; font-weight: bold; margin-bottom: 4px; color: #000;">${label}</div>
-                            ${payload.map((entry: any) => `
+                            ${payload.map((entry: any) => {
+                              // Get original value from the data point
+                              const originalValue = entry.payload[entry.dataKey + '_original'];
+                              // Use original if it exists, otherwise show the normalized value
+                              const displayValue = (originalValue !== undefined && originalValue !== null)
+                                ? originalValue
+                                : entry.value?.toFixed(1);
+
+                              return `
                               <div style="display: flex; align-items: center; margin-top: 4px;">
                                 <div style="
                                   width: 12px;
@@ -703,10 +711,11 @@ export default function DashboardScreen() {
                                   background-color: ${entry.color};
                                 "></div>
                                 <span style="font-size: 12px; color: #000;">
-                                  ${entry.dataKey}: ${entry.value?.toFixed(1)}%
+                                  ${entry.dataKey}: ${displayValue}
                                 </span>
                               </div>
-                            `).join('')}
+                              `;
+                            }).join('')}
                           </div>
                         `;
                         return <div dangerouslySetInnerHTML={{ __html: tooltipContent }} />;
