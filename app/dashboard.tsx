@@ -297,142 +297,283 @@ export default function DashboardScreen() {
         .filter(d => typeof d.value === 'number' && d.value <= 0.5)
         .map(d => d.date);
 
-      if (trueDates.length < 1) continue;
+      // Skip if we don't have data for either state
+      if (trueDates.length < 1 && falseDates.length < 1) continue;
 
-      // Analyze what happens when boolean is TRUE
-      const trueOutcomes: string[] = [];
-      const trueRelatedEvents: Event[] = [boolEvent];
+      // Analyze what happens when boolean is TRUE (if we have true dates)
+      if (trueDates.length >= 1) {
+        const trueOutcomes: string[] = [];
+        const trueRelatedEvents: Event[] = [boolEvent];
 
-      // Check number events
-      for (const { event: numEvent, dataPoints: numData } of numberEvents) {
-        if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
-        const trueValues = trueDates
-          .map(date => numData.find(d => d.date === date))
-          .filter(d => d && typeof d.value === 'number')
-          .map(d => d!.value as number);
+        // Check number events
+        for (const { event: numEvent, dataPoints: numData } of numberEvents) {
+          if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
+          const trueValues = trueDates
+            .map(date => numData.find(d => d.date === date))
+            .filter(d => d && typeof d.value === 'number')
+            .map(d => d!.value as number);
 
-        const falseValues = falseDates.length > 0 ? falseDates
-          .map(date => numData.find(d => d.date === date))
-          .filter(d => d && typeof d.value === 'number')
-          .map(d => d!.value as number) : [];
+          const falseValues = falseDates.length > 0 ? falseDates
+            .map(date => numData.find(d => d.date === date))
+            .filter(d => d && typeof d.value === 'number')
+            .map(d => d!.value as number) : [];
 
-        if (trueValues.length > 0) {
-          const avgTrue = trueValues.reduce((a, b) => a + b, 0) / trueValues.length;
-          const minTrue = Math.min(...trueValues);
-          const maxTrue = Math.max(...trueValues);
-          const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
+          if (trueValues.length > 0) {
+            const avgTrue = trueValues.reduce((a, b) => a + b, 0) / trueValues.length;
+            const minTrue = Math.min(...trueValues);
+            const maxTrue = Math.max(...trueValues);
+            const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
 
-          let shouldInclude = false;
-          if (falseValues.length > 0) {
-            const avgFalse = falseValues.reduce((a, b) => a + b, 0) / falseValues.length;
-            const diff = Math.abs(avgTrue - avgFalse);
-            const percentDiff = avgFalse > 0 ? (diff / avgFalse) * 100 : 0;
-            shouldInclude = percentDiff > 5 || diff > 0.5;
-          } else {
-            shouldInclude = avgTrue > 0.1;
-          }
-
-          if (shouldInclude) {
-            trueRelatedEvents.push(numEvent);
-            if (maxTrue - minTrue > 0.5) {
-              trueOutcomes.push(`${numEvent.name} ${minTrue.toFixed(1)}-${maxTrue.toFixed(1)}${unit}`);
+            let shouldInclude = false;
+            if (falseValues.length > 0) {
+              const avgFalse = falseValues.reduce((a, b) => a + b, 0) / falseValues.length;
+              const diff = Math.abs(avgTrue - avgFalse);
+              const percentDiff = avgFalse > 0 ? (diff / avgFalse) * 100 : 0;
+              shouldInclude = percentDiff > 5 || diff > 0.5;
             } else {
-              trueOutcomes.push(`${numEvent.name} ${avgTrue.toFixed(1)}${unit}`);
+              shouldInclude = avgTrue > 0.1;
+            }
+
+            if (shouldInclude) {
+              trueRelatedEvents.push(numEvent);
+              if (maxTrue - minTrue > 0.5) {
+                trueOutcomes.push(`${numEvent.name} ${minTrue.toFixed(1)}-${maxTrue.toFixed(1)}${unit}`);
+              } else {
+                trueOutcomes.push(`${numEvent.name} ${avgTrue.toFixed(1)}${unit}`);
+              }
             }
           }
         }
+
+        // Check other boolean events
+        for (const { event: otherBool, dataPoints: otherData } of booleanEvents) {
+          if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
+          if (otherBool.id === boolEvent.id) continue;
+
+          const trueValues = trueDates
+            .map(date => otherData.find(d => d.date === date))
+            .filter(d => d && typeof d.value === 'number')
+            .map(d => d!.value as number);
+
+          const falseValues = falseDates.length > 0 ? falseDates
+            .map(date => otherData.find(d => d.date === date))
+            .filter(d => d && typeof d.value === 'number')
+            .map(d => d!.value as number) : [];
+
+          if (trueValues.length > 0) {
+            const trueTrue = trueValues.filter(v => v > 0.5).length;
+            const trueRate = (trueTrue / trueValues.length) * 100;
+
+            let shouldInclude = false;
+            let outcomeText = '';
+
+            if (falseValues.length > 0) {
+              const falseTrue = falseValues.filter(v => v > 0.5).length;
+              const falseRate = (falseTrue / falseValues.length) * 100;
+              const diff = trueRate - falseRate;
+
+              if (Math.abs(diff) > 10) {
+                shouldInclude = true;
+                trueRelatedEvents.push(otherBool);
+                if (diff > 0) {
+                  outcomeText = trueRate >= 80
+                    ? otherBool.name
+                    : `${otherBool.name} ${trueRate.toFixed(0)}%`;
+                } else {
+                  outcomeText = trueRate <= 20
+                    ? `No ${otherBool.name}`
+                    : `${otherBool.name} ${trueRate.toFixed(0)}%`;
+                }
+              }
+            } else {
+              if (trueRate >= 70) {
+                shouldInclude = true;
+                trueRelatedEvents.push(otherBool);
+                outcomeText = otherBool.name;
+              } else if (trueRate <= 30) {
+                shouldInclude = true;
+                trueRelatedEvents.push(otherBool);
+                outcomeText = `No ${otherBool.name}`;
+              }
+            }
+
+            if (shouldInclude && outcomeText) {
+              trueOutcomes.push(outcomeText);
+            }
+          }
+        }
+
+        // Check string events
+        for (const { event: strEvent, dataPoints: strData } of stringEvents) {
+          if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
+          const trueStrValues = trueDates
+            .map(date => strData.find(d => d.date === date))
+            .filter(d => d && typeof d.value === 'string')
+            .map(d => String(d!.value).trim().toLowerCase())
+            .filter(v => v);
+
+          if (trueStrValues.length > 0) {
+            // Find most common string value when boolean is true
+            const freq: Record<string, number> = {};
+            trueStrValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
+            const mostCommon = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+
+            if (mostCommon && mostCommon[1] / trueStrValues.length >= 0.5) {
+              trueRelatedEvents.push(strEvent);
+              const pct = ((mostCommon[1] / trueStrValues.length) * 100).toFixed(0);
+              trueOutcomes.push(`${strEvent.name} "${mostCommon[0]}" ${pct}%`);
+            }
+          }
+        }
+
+        if (trueOutcomes.length > 0) {
+          // Format as concise formula: "Good day → Sleep 6-8h → Romance 2h → ..."
+          const description = `${boolEvent.name} → ${trueOutcomes.join(' → ')}`;
+          patterns.push({
+            description,
+            confidence: Math.min(95, 65 + trueOutcomes.length * 4),
+            type: 'co-occurrence',
+            events: trueRelatedEvents,
+          });
+        }
       }
 
-      // Check other boolean events
-      for (const { event: otherBool, dataPoints: otherData } of booleanEvents) {
-        if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
-        if (otherBool.id === boolEvent.id) continue;
+      // Analyze what happens when boolean is FALSE (if we have false dates)
+      if (falseDates.length >= 1) {
+        const falseOutcomes: string[] = [];
+        const falseRelatedEvents: Event[] = [boolEvent];
 
-        const trueValues = trueDates
-          .map(date => otherData.find(d => d.date === date))
-          .filter(d => d && typeof d.value === 'number')
-          .map(d => d!.value as number);
+        // Check number events
+        for (const { event: numEvent, dataPoints: numData } of numberEvents) {
+          if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
+          const falseValues = falseDates
+            .map(date => numData.find(d => d.date === date))
+            .filter(d => d && typeof d.value === 'number')
+            .map(d => d!.value as number);
 
-        const falseValues = falseDates.length > 0 ? falseDates
-          .map(date => otherData.find(d => d.date === date))
-          .filter(d => d && typeof d.value === 'number')
-          .map(d => d!.value as number) : [];
+          const trueValues = trueDates.length > 0 ? trueDates
+            .map(date => numData.find(d => d.date === date))
+            .filter(d => d && typeof d.value === 'number')
+            .map(d => d!.value as number) : [];
 
-        if (trueValues.length > 0) {
-          const trueTrue = trueValues.filter(v => v > 0.5).length;
-          const trueRate = (trueTrue / trueValues.length) * 100;
+          if (falseValues.length > 0) {
+            const avgFalse = falseValues.reduce((a, b) => a + b, 0) / falseValues.length;
+            const minFalse = Math.min(...falseValues);
+            const maxFalse = Math.max(...falseValues);
+            const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
 
-          let shouldInclude = false;
-          let outcomeText = '';
+            let shouldInclude = false;
+            if (trueValues.length > 0) {
+              const avgTrue = trueValues.reduce((a, b) => a + b, 0) / trueValues.length;
+              const diff = Math.abs(avgFalse - avgTrue);
+              const percentDiff = avgTrue > 0 ? (diff / avgTrue) * 100 : 0;
+              shouldInclude = percentDiff > 5 || diff > 0.5;
+            } else {
+              shouldInclude = avgFalse > 0.1;
+            }
+
+            if (shouldInclude) {
+              falseRelatedEvents.push(numEvent);
+              if (maxFalse - minFalse > 0.5) {
+                falseOutcomes.push(`${numEvent.name} ${minFalse.toFixed(1)}-${maxFalse.toFixed(1)}${unit}`);
+              } else {
+                falseOutcomes.push(`${numEvent.name} ${avgFalse.toFixed(1)}${unit}`);
+              }
+            }
+          }
+        }
+
+        // Check other boolean events
+        for (const { event: otherBool, dataPoints: otherData } of booleanEvents) {
+          if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
+          if (otherBool.id === boolEvent.id) continue;
+
+          const falseValues = falseDates
+            .map(date => otherData.find(d => d.date === date))
+            .filter(d => d && typeof d.value === 'number')
+            .map(d => d!.value as number);
+
+          const trueValues = trueDates.length > 0 ? trueDates
+            .map(date => otherData.find(d => d.date === date))
+            .filter(d => d && typeof d.value === 'number')
+            .map(d => d!.value as number) : [];
 
           if (falseValues.length > 0) {
             const falseTrue = falseValues.filter(v => v > 0.5).length;
             const falseRate = (falseTrue / falseValues.length) * 100;
-            const diff = trueRate - falseRate;
 
-            if (Math.abs(diff) > 10) {
-              shouldInclude = true;
-              trueRelatedEvents.push(otherBool);
-              if (diff > 0) {
-                outcomeText = trueRate >= 80
-                  ? otherBool.name
-                  : `${otherBool.name} ${trueRate.toFixed(0)}%`;
-              } else {
-                outcomeText = trueRate <= 20
-                  ? `No ${otherBool.name}`
-                  : `${otherBool.name} ${trueRate.toFixed(0)}%`;
+            let shouldInclude = false;
+            let outcomeText = '';
+
+            if (trueValues.length > 0) {
+              const trueTrue = trueValues.filter(v => v > 0.5).length;
+              const trueRate = (trueTrue / trueValues.length) * 100;
+              const diff = falseRate - trueRate;
+
+              if (Math.abs(diff) > 10) {
+                shouldInclude = true;
+                falseRelatedEvents.push(otherBool);
+                if (diff > 0) {
+                  outcomeText = falseRate >= 80
+                    ? otherBool.name
+                    : `${otherBool.name} ${falseRate.toFixed(0)}%`;
+                } else {
+                  outcomeText = falseRate <= 20
+                    ? `No ${otherBool.name}`
+                    : `${otherBool.name} ${falseRate.toFixed(0)}%`;
+                }
+              }
+            } else {
+              if (falseRate >= 70) {
+                shouldInclude = true;
+                falseRelatedEvents.push(otherBool);
+                outcomeText = otherBool.name;
+              } else if (falseRate <= 30) {
+                shouldInclude = true;
+                falseRelatedEvents.push(otherBool);
+                outcomeText = `No ${otherBool.name}`;
               }
             }
-          } else {
-            if (trueRate >= 70) {
-              shouldInclude = true;
-              trueRelatedEvents.push(otherBool);
-              outcomeText = otherBool.name;
-            } else if (trueRate <= 30) {
-              shouldInclude = true;
-              trueRelatedEvents.push(otherBool);
-              outcomeText = `No ${otherBool.name}`;
+
+            if (shouldInclude && outcomeText) {
+              falseOutcomes.push(outcomeText);
             }
           }
+        }
 
-          if (shouldInclude && outcomeText) {
-            trueOutcomes.push(outcomeText);
+        // Check string events
+        for (const { event: strEvent, dataPoints: strData } of stringEvents) {
+          if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
+          const falseStrValues = falseDates
+            .map(date => strData.find(d => d.date === date))
+            .filter(d => d && typeof d.value === 'string')
+            .map(d => String(d!.value).trim().toLowerCase())
+            .filter(v => v);
+
+          if (falseStrValues.length > 0) {
+            // Find most common string value when boolean is false
+            const freq: Record<string, number> = {};
+            falseStrValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
+            const mostCommon = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+
+            if (mostCommon && mostCommon[1] / falseStrValues.length >= 0.5) {
+              falseRelatedEvents.push(strEvent);
+              const pct = ((mostCommon[1] / falseStrValues.length) * 100).toFixed(0);
+              falseOutcomes.push(`${strEvent.name} "${mostCommon[0]}" ${pct}%`);
+            }
           }
         }
-      }
 
-      // Check string events
-      for (const { event: strEvent, dataPoints: strData } of stringEvents) {
-        if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
-        const trueStrValues = trueDates
-          .map(date => strData.find(d => d.date === date))
-          .filter(d => d && typeof d.value === 'string')
-          .map(d => String(d!.value).trim().toLowerCase())
-          .filter(v => v);
-
-        if (trueStrValues.length > 0) {
-          // Find most common string value when boolean is true
-          const freq: Record<string, number> = {};
-          trueStrValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
-          const mostCommon = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
-
-          if (mostCommon && mostCommon[1] / trueStrValues.length >= 0.5) {
-            trueRelatedEvents.push(strEvent);
-            const pct = ((mostCommon[1] / trueStrValues.length) * 100).toFixed(0);
-            trueOutcomes.push(`${strEvent.name} "${mostCommon[0]}" ${pct}%`);
-          }
+        if (falseOutcomes.length > 0) {
+          // Format as concise formula with "NOT" prefix: "NOT Good day → Sleep 4-6h → No Romance → ..."
+          const description = `NOT ${boolEvent.name} → ${falseOutcomes.join(' → ')}`;
+          patterns.push({
+            description,
+            confidence: Math.min(95, 65 + falseOutcomes.length * 4),
+            type: 'co-occurrence',
+            events: falseRelatedEvents,
+          });
         }
-      }
-
-      if (trueOutcomes.length > 0) {
-        // Format as concise formula: "Good day → Sleep 6-8h → Romance 2h → ..."
-        const description = `${boolEvent.name} → ${trueOutcomes.join(' → ')}`;
-        patterns.push({
-          description,
-          confidence: Math.min(95, 65 + trueOutcomes.length * 4),
-          type: 'co-occurrence',
-          events: trueRelatedEvents,
-        });
       }
     }
 
