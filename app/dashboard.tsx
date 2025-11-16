@@ -3,14 +3,14 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Stack } from 'expo-router';
 import * as React from 'react';
-import { View, ScrollView, Dimensions, Platform, Pressable } from 'react-native';
+import { View, ScrollView, Dimensions, Platform, Pressable, Modal } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getEventValuesForDateRange } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
 import type { Event } from '@/types/events';
 
 // Platform-specific imports
-let LineChart: any, ResponsiveContainer: any, XAxis: any, YAxis: any, Tooltip: any, Legend: any, RechartsLine: any;
+let LineChart: any, ResponsiveContainer: any, XAxis: any, YAxis: any, Tooltip: any, RechartsLine: any;
 let ChartLineChart: any;
 
 if (Platform.OS === 'web') {
@@ -21,7 +21,6 @@ if (Platform.OS === 'web') {
   XAxis = recharts.XAxis;
   YAxis = recharts.YAxis;
   Tooltip = recharts.Tooltip;
-  Legend = recharts.Legend;
   RechartsLine = recharts.Line;
 } else {
   // react-native-chart-kit for mobile
@@ -685,27 +684,43 @@ export default function DashboardScreen() {
                   <Tooltip
                     content={({ active, payload, label }: any) => {
                       if (active && payload && payload.length) {
-                        return (
-                          <View className="p-3 bg-card border border-border rounded-lg">
-                            <Text className="text-sm font-semibold mb-1">{label}</Text>
-                            {payload.map((entry: any) => (
-                              <View key={entry.dataKey} className="flex-row items-center mt-1">
-                                <View
-                                  className="w-3 h-3 rounded-full mr-2"
-                                  style={{ backgroundColor: entry.color }}
-                                />
-                                <Text className="text-xs">
-                                  {entry.dataKey}: {entry.value?.toFixed(1)}%
-                                </Text>
-                              </View>
-                            ))}
-                          </View>
-                        );
+                        const tooltipContent = `
+                          <div style="
+                            background-color: rgb(255, 255, 255);
+                            opacity: 1 !important;
+                            padding: 12px;
+                            border-radius: 8px;
+                            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                          ">
+                            <div style="font-size: 13px; font-weight: bold; margin-bottom: 4px; color: #000;">${label}</div>
+                            ${payload.map((entry: any) => `
+                              <div style="display: flex; align-items: center; margin-top: 4px;">
+                                <div style="
+                                  width: 12px;
+                                  height: 12px;
+                                  border-radius: 6px;
+                                  margin-right: 8px;
+                                  background-color: ${entry.color};
+                                "></div>
+                                <span style="font-size: 12px; color: #000;">
+                                  ${entry.dataKey}: ${entry.value?.toFixed(1)}%
+                                </span>
+                              </div>
+                            `).join('')}
+                          </div>
+                        `;
+                        return <div dangerouslySetInnerHTML={{ __html: tooltipContent }} />;
                       }
                       return null;
                     }}
+                    wrapperStyle={{
+                      opacity: '1 !important',
+                      backgroundColor: '#FFFFFF',
+                      border: 'none',
+                      outline: 'none'
+                    }}
+                    cursor={false}
                   />
-                  <Legend />
                   {[...numericEvents, ...stringEvents].map(({ event }) => (
                     <RechartsLine
                       key={event.id}
@@ -722,7 +737,7 @@ export default function DashboardScreen() {
             </View>
           ) : (
             // Mobile: Use react-native-chart-kit
-            <View>
+            <View style={{ overflow: 'visible' }}>
               <ScrollView horizontal showsHorizontalScrollIndicator>
                 <ChartLineChart
                   data={{
@@ -777,76 +792,73 @@ export default function DashboardScreen() {
                   }}
                 />
               </ScrollView>
-
-              {/* Tooltip overlay - positioned absolutely over everything */}
-              {tooltipPos && tooltipPos.visible && (
-                <Pressable
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    zIndex: 1000,
-                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                  }}
-                  onPress={() => setTooltipPos(null)}
-                >
-                  <View
-                    style={{
-                      position: 'absolute',
-                      left: Math.max(16, Math.min(tooltipPos.x - 90, screenWidth - 196)),
-                      top: Math.max(16, tooltipPos.y - 160),
-                      backgroundColor: '#000000',
-                      opacity: 1,
-                      padding: 16,
-                      borderRadius: 12,
-                      borderWidth: 2,
-                      borderColor: '#666',
-                      width: 180,
-                      shadowColor: '#000',
-                      shadowOffset: { width: 0, height: 4 },
-                      shadowOpacity: 0.3,
-                      shadowRadius: 8,
-                      elevation: 10,
-                    }}
-                  >
-                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>
-                      {tooltipPos.data.date}
-                    </Text>
-                    {[...numericEvents, ...stringEvents].map(({ event }) => {
-                      const value = tooltipPos.data[event.name];
-                      if (value === undefined || value === null) return null;
-                      return (
-                        <View key={event.id} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                          <View
-                            style={{
-                              width: 10,
-                              height: 10,
-                              borderRadius: 5,
-                              backgroundColor: event.color,
-                              marginRight: 8,
-                            }}
-                          />
-                          <Text style={{ color: '#fff', fontSize: 12, flex: 1 }}>
-                            {event.name}: {value.toFixed(1)}%
-                          </Text>
-                        </View>
-                      );
-                    })}
-                    <Text style={{ color: '#888', fontSize: 10, textAlign: 'center', marginTop: 12, fontStyle: 'italic' }}>
-                      Tap anywhere to close
-                    </Text>
-                  </View>
-                </Pressable>
-              )}
             </View>
           )}
         </View>
 
-        <Text className="text-xs text-muted-foreground mt-3">
-          * Values normalized to 0-100% scale for visual comparison. Scroll horizontally to see all data points!
-        </Text>
+        {/* Tooltip Modal - renders on top of everything */}
+        <Modal
+          visible={tooltipPos !== null && tooltipPos.visible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setTooltipPos(null)}
+        >
+          <Pressable
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+            onPress={() => setTooltipPos(null)}
+          >
+            {tooltipPos && (
+              <View
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  padding: 16,
+                  borderRadius: 12,
+                  borderWidth: 2,
+                  borderColor: '#333',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 10,
+                  minWidth: 200,
+                  maxWidth: 300,
+                }}
+              >
+                <Text style={{ color: '#000', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>
+                  {tooltipPos.data.date}
+                </Text>
+                {[...numericEvents, ...stringEvents].map(({ event }) => {
+                  const value = tooltipPos.data[event.name];
+                  if (value === undefined || value === null) return null;
+                  return (
+                    <View key={event.id} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                      <View
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: 5,
+                          backgroundColor: event.color,
+                          marginRight: 8,
+                        }}
+                      />
+                      <Text style={{ color: '#000', fontSize: 12, flex: 1 }}>
+                        {event.name}: {value.toFixed(1)}%
+                      </Text>
+                    </View>
+                  );
+                })}
+                <Text style={{ color: '#666', fontSize: 10, textAlign: 'center', marginTop: 12, fontStyle: 'italic' }}>
+                  Tap anywhere to close
+                </Text>
+              </View>
+            )}
+          </Pressable>
+        </Modal>
       </View>
     );
   };

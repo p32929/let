@@ -2,9 +2,9 @@ import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Stack, router } from 'expo-router';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon, InfoIcon } from 'lucide-react-native';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon } from 'lucide-react-native';
 import * as React from 'react';
-import { View, ScrollView, Pressable, Platform, Linking } from 'react-native';
+import { View, ScrollView, Pressable, Platform } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
 import { useColorScheme } from 'nativewind';
@@ -28,7 +28,6 @@ export default function HomeScreen() {
   const [showCalendar, setShowCalendar] = React.useState(false);
   const [showImportDialog, setShowImportDialog] = React.useState(false);
   const [showResetDialog, setShowResetDialog] = React.useState(false);
-  const [showAboutDialog, setShowAboutDialog] = React.useState(false);
   const [importingData, setImportingData] = React.useState(false);
   const [importProgress, setImportProgress] = React.useState(0);
   const [importMessage, setImportMessage] = React.useState('');
@@ -433,16 +432,6 @@ export default function HomeScreen() {
               <Text className="text-base text-[#ef4444] dark:text-[#dc2626]">Reset All Data</Text>
             </Pressable>
             <Pressable
-              className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
-              onPress={() => {
-                setShowMenu(false);
-                setShowAboutDialog(true);
-              }}
-            >
-              <Icon as={InfoIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
-              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">About</Text>
-            </Pressable>
-            <Pressable
               className="flex-row items-center px-4 py-3 hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
               onPress={() => {
                 setColorScheme(colorScheme === 'dark' ? 'light' : 'dark');
@@ -625,54 +614,6 @@ export default function HomeScreen() {
                 </Text>
               </>
             )}
-          </View>
-        </View>
-      )}
-
-      {/* About Dialog */}
-      {showAboutDialog && (
-        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
-          <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
-            <Text className="text-2xl font-bold mb-4 text-center text-[#0a0a0a] dark:text-[#fafafa]">
-              Life Events Tracker
-            </Text>
-
-            <Text className="text-[#737373] dark:text-[#a3a3a3] mb-4 text-center">
-              Track your daily events, discover patterns, and gain insights into your life.
-            </Text>
-
-            <View className="mb-4 bg-[#f5f5f5]/50 dark:bg-[#262626]/50 p-3 rounded-lg">
-              <Text className="text-sm text-[#0a0a0a] dark:text-[#fafafa] mb-1">Version</Text>
-              <Text className="text-[#737373] dark:text-[#a3a3a3]">1.0.0</Text>
-            </View>
-
-            <View className="gap-2 mb-4">
-              <Pressable
-                className="bg-[#171717] dark:bg-[#fafafa] rounded-lg p-3 active:opacity-80"
-                onPress={() => Linking.openURL('https://github.com/FayazK/life.events.tracker')}
-              >
-                <Text className="text-[#fafafa] dark:text-[#171717] font-medium text-center">
-                  View on GitHub
-                </Text>
-              </Pressable>
-
-              <Pressable
-                className="border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-3 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
-                onPress={() => Linking.openURL('https://fayazk.com')}
-              >
-                <Text className="text-[#0a0a0a] dark:text-[#fafafa] font-medium text-center">
-                  Developer Portfolio
-                </Text>
-              </Pressable>
-            </View>
-
-            <Button
-              variant="outline"
-              onPress={() => setShowAboutDialog(false)}
-              className="w-full"
-            >
-              <Text>Close</Text>
-            </Button>
           </View>
         </View>
       )}
