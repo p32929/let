@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Stack } from 'expo-router';
 import * as React from 'react';
-import { View, ScrollView, Dimensions, Pressable, Modal } from 'react-native';
+import { View, ScrollView, Dimensions, Pressable, Modal, TouchableWithoutFeedback } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getEventValuesForDateRange } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
@@ -129,17 +129,14 @@ export default function DashboardScreen() {
 
     if (allData.length < 2) return [];
 
-    const MAX_PATTERNS = 30; // Reduced - we're merging patterns now
-
     // SMART PATTERN DISCOVERY: Group and merge similar patterns
-    // Instead of showing 20 patterns, show 5-10 comprehensive merged patterns
+    // Show ALL patterns (deduplication will handle quality)
 
     const mergedPatterns: Pattern[] = [];
 
     // STRATEGY 1: Group number ranges (e.g., Sleep 6-8h → ...)
     // Find number ranges that lead to similar outcomes
     for (const { event: numEvent, dataPoints: numData } of numberEvents) {
-      if (mergedPatterns.length >= MAX_PATTERNS) break;
 
       const numericValues = numData
         .filter(d => typeof d.value === 'number')
@@ -171,7 +168,6 @@ export default function DashboardScreen() {
         { rangeName: 'high', dates: highDates, rangeMin: highThreshold, rangeMax: max },
       ]) {
         if (dates.length < 2) continue;
-        if (mergedPatterns.length >= MAX_PATTERNS) break;
 
         const outcomes: string[] = [];
         const relatedEvents: Event[] = [numEvent];
@@ -269,8 +265,6 @@ export default function DashboardScreen() {
 
     // STRATEGY 2: Boolean-based patterns with aggregated string distributions
     for (const { event: boolEvent, dataPoints: boolData } of booleanEvents) {
-      if (mergedPatterns.length >= MAX_PATTERNS) break;
-
       const trueDates = boolData
         .filter(d => typeof d.value === 'number' && d.value > 0.5)
         .map(d => d.date);
@@ -514,6 +508,7 @@ export default function DashboardScreen() {
   const CombinedChart = () => {
     // State for mobile tooltip
     const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number; visible: boolean; data: any; date: string } | null>(null);
+    const chartRef = React.useRef<View>(null);
 
     // Calculate data
     const numericEvents = chartData.filter((d) => d.event.type !== 'string' && d.dataPoints.length > 0);
@@ -616,7 +611,10 @@ export default function DashboardScreen() {
           {/* Combined chart with all lines - Custom SVG (True cross-platform) */}
           <View style={{ height: 250, width: '100%' }}>
             <ScrollView horizontal showsHorizontalScrollIndicator>
-              <View style={{ width: Math.max(screenWidth - 32, combinedChartData.length * 50), height: 250 }}>
+              <View
+                ref={chartRef}
+                style={{ width: Math.max(screenWidth - 32, combinedChartData.length * 50), height: 250 }}
+              >
                 <Svg width={Math.max(screenWidth - 32, combinedChartData.length * 50)} height={250}>
                   <G>
                     {/* Render lines for each event */}
@@ -651,7 +649,7 @@ export default function DashboardScreen() {
                               />
                             );
                           })}
-                          {/* Draw clickable circles at data points */}
+                          {/* Draw visible circles at data points */}
                           {points.map((point, i) => (
                             <Circle
                               key={`${event.id}-point-${i}`}
@@ -659,16 +657,6 @@ export default function DashboardScreen() {
                               cy={point.y}
                               r={4}
                               fill={event.color}
-                              onPress={() => {
-                                const dataPoint = combinedChartData[i];
-                                setTooltipPos({
-                                  x: point.x,
-                                  y: point.y,
-                                  visible: true,
-                                  data: dataPoint,
-                                  date: dataPoint.date
-                                });
-                              }}
                             />
                           ))}
                         </G>
@@ -676,6 +664,52 @@ export default function DashboardScreen() {
                     })}
                   </G>
                 </Svg>
+
+                {/* Cross-platform touch overlay */}
+                <TouchableWithoutFeedback
+                  onPress={(event) => {
+                    const nativeEvent = event.nativeEvent as any;
+                    const locationX = nativeEvent.locationX || nativeEvent.pageX || 0;
+                    const locationY = nativeEvent.locationY || nativeEvent.pageY || 0;
+
+                    // Find nearest data point
+                    let nearestIndex = -1;
+                    let minDistance = Infinity;
+
+                    combinedChartData.forEach((_, index) => {
+                      const x = 40 + (index * (Math.max(screenWidth - 72, combinedChartData.length * 50 - 40) / (combinedChartData.length - 1)));
+                      const distance = Math.abs(locationX - x);
+
+                      if (distance < minDistance && distance < 50) { // Within 50px for easier clicking
+                        minDistance = distance;
+                        nearestIndex = index;
+                      }
+                    });
+
+                    if (nearestIndex !== -1) {
+                      const dataPoint = combinedChartData[nearestIndex];
+                      const x = 40 + (nearestIndex * (Math.max(screenWidth - 72, combinedChartData.length * 50 - 40) / (combinedChartData.length - 1)));
+
+                      setTooltipPos({
+                        x,
+                        y: locationY,
+                        visible: true,
+                        data: dataPoint,
+                        date: dataPoint.date
+                      });
+                    }
+                  }}
+                >
+                  <View
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                    }}
+                  />
+                </TouchableWithoutFeedback>
               </View>
             </ScrollView>
           </View>
@@ -703,8 +737,6 @@ export default function DashboardScreen() {
                   backgroundColor: '#FFFFFF',
                   padding: 16,
                   borderRadius: 12,
-                  borderWidth: 2,
-                  borderColor: '#333',
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.3,
