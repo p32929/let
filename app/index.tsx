@@ -74,7 +74,7 @@ export default function HomeScreen() {
 
   // Memoize screen options
   const screenOptions = React.useMemo(() => ({
-    title: 'Life Events Tracker',
+    title: 'LET',
     headerRight,
   }), [headerRight]);
 
