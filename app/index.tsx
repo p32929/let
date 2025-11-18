@@ -40,6 +40,11 @@ export default function HomeScreen() {
   const { events, loadEvents, isLoading } = useEventsStore();
   const { colorScheme, setColorScheme } = useColorScheme();
 
+  // Check if any modal/dialog is showing
+  const isAnyDialogShowing = loadingSampleData || isResetting || importingData ||
+    showMenu || showCalendar || showImportDialog || showResetDialog ||
+    showNoEventsDialog || showSampleDataDialog;
+
   // Memoize header right component to prevent re-creation on every render
   const headerRight = React.useCallback(() => (
     <View className="flex-row gap-1">
@@ -48,6 +53,7 @@ export default function HomeScreen() {
         variant="ghost"
         className="rounded-full"
         onPress={() => setShowMenu(!showMenu)}
+        disabled={loadingSampleData || isResetting || importingData}
       >
         <Icon as={MoreVerticalIcon} className="size-5" />
       </Button>
@@ -56,11 +62,12 @@ export default function HomeScreen() {
         variant="ghost"
         className="rounded-full"
         onPress={() => router.push('/add-event')}
+        disabled={loadingSampleData || isResetting || importingData}
       >
         <Icon as={PlusIcon} className="size-5" />
       </Button>
     </View>
-  ), [showMenu]);
+  ), [showMenu, loadingSampleData, isResetting, importingData]);
 
   // Memoize screen options
   const screenOptions = React.useMemo(() => ({
@@ -289,12 +296,14 @@ export default function HomeScreen() {
                 variant="ghost"
                 onPress={handlePreviousWeek}
                 className="rounded-full"
+                disabled={loadingSampleData || isResetting || importingData}
               >
                 <Icon as={ChevronLeftIcon} className="size-5" />
               </Button>
               <Pressable
                 onPress={() => setShowCalendar(true)}
                 className="flex-1 items-center"
+                disabled={loadingSampleData || isResetting || importingData}
               >
                 <Text className="text-lg font-semibold text-[#0a0a0a] dark:text-[#fafafa]">
                   {formatDate(weekDays[0], 'MMM d')} - {formatDate(weekDays[6], 'MMM d, yyyy')}
@@ -305,6 +314,7 @@ export default function HomeScreen() {
                 variant="ghost"
                 onPress={handleNextWeek}
                 className="rounded-full"
+                disabled={loadingSampleData || isResetting || importingData}
               >
                 <Icon as={ChevronRightIcon} className="size-5" />
               </Button>
@@ -484,7 +494,7 @@ export default function HomeScreen() {
 
       {/* No Events Dialog */}
       {showNoEventsDialog && (
-        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
+        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-[100]">
           <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
             <Text className="text-xl font-bold mb-2 text-[#0a0a0a] dark:text-[#fafafa]">No Events Found</Text>
             <Text className="text-[#737373] dark:text-[#a3a3a3] mb-4">
@@ -514,7 +524,7 @@ export default function HomeScreen() {
 
       {/* Sample Data Confirmation Dialog */}
       {showSampleDataDialog && (
-        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
+        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-[100]">
           <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
             <Text className="text-xl font-bold mb-2 text-[#0a0a0a] dark:text-[#fafafa]">Load Sample Data?</Text>
             <Text className="text-[#737373] dark:text-[#a3a3a3] mb-4">
@@ -541,7 +551,7 @@ export default function HomeScreen() {
 
       {/* Reset Confirmation Dialog */}
       {showResetDialog && (
-        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
+        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-[100]">
           <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
             <Text className="text-xl font-bold mb-2 text-[#0a0a0a] dark:text-[#fafafa]">Reset All Data?</Text>
             <Text className="text-[#737373] dark:text-[#a3a3a3] mb-4">
@@ -569,7 +579,7 @@ export default function HomeScreen() {
 
       {/* Loading Progress Overlay */}
       {loadingSampleData && (
-        <View className="absolute inset-0 bg-black/70 items-center justify-center p-4">
+        <View className="absolute inset-0 bg-black/70 items-center justify-center p-4 z-[100]">
           <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
             <Text className="text-xl font-bold mb-4 text-center text-[#0a0a0a] dark:text-[#fafafa]">Loading Sample Data</Text>
 
@@ -601,7 +611,7 @@ export default function HomeScreen() {
 
       {/* Calendar Dialog */}
       {showCalendar && (
-        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
+        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-[100]">
           <Pressable
             className="absolute inset-0 bg-transparent"
             onPress={() => setShowCalendar(false)}
@@ -618,7 +628,7 @@ export default function HomeScreen() {
 
       {/* Import Dialog */}
       {showImportDialog && (
-        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
+        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-[100]">
           <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
             <Text className="text-xl font-bold mb-2 text-[#0a0a0a] dark:text-[#fafafa]">Import Data</Text>
             <Text className="text-[#737373] dark:text-[#a3a3a3] mb-4">
