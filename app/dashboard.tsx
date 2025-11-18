@@ -7,7 +7,7 @@ import * as React from 'react';
 import { View, ScrollView, Dimensions, Pressable } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getEventValuesForDateRangeComplete, getAllEventValues } from '@/db/operations/events';
-import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, differenceInDays, getDay, subMonths } from 'date-fns';
+import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, differenceInDays, getDay, subMonths, addDays, isSameMonth, getDaysInMonth } from 'date-fns';
 import type { Event } from '@/types/events';
 import { TrendingUpIcon, TrendingDownIcon, TargetIcon, CalendarIcon, AwardIcon, ActivityIcon, CheckCircle2Icon, ZapIcon, TrophyIcon, SparklesIcon, FlameIcon, AlertCircleIcon } from 'lucide-react-native';
 import Svg, { Rect, Line as SvgLine, Circle, Path, Text as SvgText } from 'react-native-svg';
@@ -165,6 +165,7 @@ const ActivityHeatmap = ({ data }: { data: { date: string; count: number }[] }) 
 export default function DashboardScreen() {
   const { events } = useEventsStore();
   const [summaryStats, setSummaryStats] = React.useState<SummaryStats[]>([]);
+  const [summaryStatsCache, setSummaryStatsCache] = React.useState<Record<string, SummaryStats[]>>({});
   const [weekComparisons, setWeekComparisons] = React.useState<WeekComparison[]>([]);
   const [monthComparisons, setMonthComparisons] = React.useState<MonthComparison[]>([]);
   const [overallConsistency, setOverallConsistency] = React.useState(0);
@@ -172,44 +173,49 @@ export default function DashboardScreen() {
   const [dayOfWeekStats, setDayOfWeekStats] = React.useState<DayOfWeekStats[]>([]);
   const [heatmapData, setHeatmapData] = React.useState<{ date: string; count: number }[]>([]);
   const [topCorrelations, setTopCorrelations] = React.useState<TopCorrelation[]>([]);
+  const [comparisonView, setComparisonView] = React.useState<'week' | 'month'>('week');
+  const [summaryView, setSummaryView] = React.useState<'7days' | '15days' | '1month' | '6months'>('7days');
   const [milestones, setMilestones] = React.useState<Milestone[]>([]);
+  const [showAllMilestones, setShowAllMilestones] = React.useState(false);
   const [recommendations, setRecommendations] = React.useState<RecommendedAction[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [isSummaryLoading, setIsSummaryLoading] = React.useState(false);
 
   React.useEffect(() => {
     loadDashboardData();
   }, [events]);
 
-  const loadDashboardData = async () => {
+  React.useEffect(() => {
+    loadSummaryData();
+  }, [events, summaryView]);
+
+  const loadSummaryData = async () => {
     if (events.length === 0) {
-      setIsLoading(false);
       return;
     }
 
-    setIsLoading(true);
+    // Check cache first
+    if (summaryStatsCache[summaryView]) {
+      setSummaryStats(summaryStatsCache[summaryView]);
+      return;
+    }
+
+    setIsSummaryLoading(true);
 
     try {
       const today = new Date();
-      const ninetyDaysAgo = format(subDays(today, 90), 'yyyy-MM-dd');
+      const daysToLoad = summaryView === '7days' ? 7
+        : summaryView === '15days' ? 15
+        : summaryView === '1month' ? 30
+        : 180; // 6 months
+      const startDate = format(subDays(today, daysToLoad - 1), 'yyyy-MM-dd');
       const todayStr = format(today, 'yyyy-MM-dd');
 
-      // Get this week, last week, this month, last month dates
-      const thisWeekStart = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-      const thisWeekEnd = format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-      const lastWeekStart = format(startOfWeek(subDays(today, 7), { weekStartsOn: 1 }), 'yyyy-MM-dd');
-      const lastWeekEnd = format(endOfWeek(subDays(today, 7), { weekStartsOn: 1 }), 'yyyy-MM-dd');
-
-      const thisMonthStart = format(startOfMonth(today), 'yyyy-MM-dd');
-      const thisMonthEnd = format(endOfMonth(today), 'yyyy-MM-dd');
-      const lastMonthStart = format(startOfMonth(subMonths(today, 1)), 'yyyy-MM-dd');
-      const lastMonthEnd = format(endOfMonth(subMonths(today, 1)), 'yyyy-MM-dd');
-
-      // Load all event data for 90 days
       const allEventData = await Promise.all(
         events.map(async (event) => {
           const dataPoints = await getEventValuesForDateRangeComplete(
             event.id,
-            ninetyDaysAgo,
+            startDate,
             todayStr,
             event.type
           );
@@ -226,12 +232,9 @@ export default function DashboardScreen() {
           unit: event.unit || undefined,
         };
 
-        // Last 30 days for main stats
-        const last30Days = dataPoints.slice(-30);
-
         if (event.type === 'boolean') {
-          const trueCount = last30Days.filter(d => d.value === 'true' || d.value === '1').length;
-          stat.completionRate = (trueCount / last30Days.length) * 100;
+          const trueCount = dataPoints.filter(d => d.value === 'true' || d.value === '1').length;
+          stat.completionRate = dataPoints.length > 0 ? (trueCount / dataPoints.length) * 100 : 0;
 
           // Calculate streaks
           let currentStreak = 0;
@@ -256,15 +259,16 @@ export default function DashboardScreen() {
           stat.currentStreak = currentStreak;
           stat.bestStreak = bestStreak;
 
-          // Trend data for sparkline (last 14 days)
-          const last14Days = dataPoints.slice(-14);
+          // Trend data for sparkline
+          const trendDays = Math.min(14, dataPoints.length);
+          const last14Days = dataPoints.slice(-trendDays);
           stat.trendData = last14Days.map(d => (d.value === 'true' || d.value === '1') ? 1 : 0);
 
           // Consistency: percentage of days with data
-          const trackedDays = last30Days.filter(d => d.value === 'true' || d.value === 'false' || d.value === '1' || d.value === '0').length;
-          stat.consistency = (trackedDays / last30Days.length) * 100;
+          const trackedDays = dataPoints.filter(d => d.value === 'true' || d.value === 'false' || d.value === '1' || d.value === '0').length;
+          stat.consistency = dataPoints.length > 0 ? (trackedDays / dataPoints.length) * 100 : 0;
         } else if (event.type === 'number') {
-          const numericValues = last30Days
+          const numericValues = dataPoints
             .map(d => parseFloat(d.value as string))
             .filter(v => !isNaN(v) && v > 0);
 
@@ -274,20 +278,21 @@ export default function DashboardScreen() {
             stat.total = sum;
           }
 
-          // Trend data for sparkline (last 14 days)
-          stat.trendData = dataPoints.slice(-14).map(d => {
+          // Trend data for sparkline
+          const trendDays = Math.min(14, dataPoints.length);
+          stat.trendData = dataPoints.slice(-trendDays).map(d => {
             const val = parseFloat(d.value as string);
             return isNaN(val) ? 0 : val;
           });
 
           // Consistency
-          const trackedDays = last30Days.filter(d => {
+          const trackedDays = dataPoints.filter(d => {
             const val = parseFloat(d.value as string);
             return !isNaN(val) && val >= 0;
           }).length;
-          stat.consistency = (trackedDays / last30Days.length) * 100;
+          stat.consistency = dataPoints.length > 0 ? (trackedDays / dataPoints.length) * 100 : 0;
         } else if (event.type === 'string') {
-          const stringValues = last30Days
+          const stringValues = dataPoints
             .map(d => d.value as string)
             .filter(v => v && v.trim() !== '');
 
@@ -302,21 +307,46 @@ export default function DashboardScreen() {
           }
 
           // Consistency
-          const trackedDays = last30Days.filter(d => {
+          const trackedDays = dataPoints.filter(d => {
             const val = d.value as string;
             return val && val.trim() !== '';
           }).length;
-          stat.consistency = (trackedDays / last30Days.length) * 100;
+          stat.consistency = dataPoints.length > 0 ? (trackedDays / dataPoints.length) * 100 : 0;
         }
 
         return stat;
       });
 
       setSummaryStats(stats);
+      setSummaryStatsCache(prev => ({ ...prev, [summaryView]: stats }));
+    } catch (error) {
+      console.error('Failed to load summary data:', error);
+    } finally {
+      setIsSummaryLoading(false);
+    }
+  };
 
-      // Calculate overall consistency score
-      const avgConsistency = stats.reduce((sum, s) => sum + (s.consistency || 0), 0) / stats.length;
-      setOverallConsistency(avgConsistency);
+  const loadDashboardData = async () => {
+    if (events.length === 0) {
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const today = new Date();
+
+      // Get this week, last week, this month, last month dates
+      const thisWeekStart = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      const thisWeekEnd = format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      const lastWeekStart = format(startOfWeek(subDays(today, 7), { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      const lastWeekEnd = format(endOfWeek(subDays(today, 7), { weekStartsOn: 1 }), 'yyyy-MM-dd');
+
+      const thisMonthStart = format(startOfMonth(today), 'yyyy-MM-dd');
+      const thisMonthEnd = format(endOfMonth(today), 'yyyy-MM-dd');
+      const lastMonthStart = format(startOfMonth(subMonths(today, 1)), 'yyyy-MM-dd');
+      const lastMonthEnd = format(endOfMonth(subMonths(today, 1)), 'yyyy-MM-dd');
 
       // Calculate tracking streak (consecutive days with ALL events tracked)
       let streak = 0;
@@ -327,7 +357,7 @@ export default function DashboardScreen() {
         return acc;
       }, {} as Record<string, any[]>);
 
-      for (let i = 0; i < 90; i++) {
+      for (let i = 0; i < 30; i++) {
         const dateStr = format(subDays(today, i), 'yyyy-MM-dd');
         const dayValues = valuesByDate[dateStr] || [];
 
@@ -359,68 +389,70 @@ export default function DashboardScreen() {
 
       // Calculate week comparisons
       const weekComps: WeekComparison[] = await Promise.all(
-        events.map(async (event) => {
-          const lastWeekData = await getEventValuesForDateRangeComplete(
-            event.id,
-            lastWeekStart,
-            lastWeekEnd,
-            event.type
-          );
-          const thisWeekData = await getEventValuesForDateRangeComplete(
-            event.id,
-            thisWeekStart,
-            thisWeekEnd,
-            event.type
-          );
+        events
+          .filter(event => event.type !== 'string') // Filter out string events
+          .map(async (event) => {
+            const lastWeekData = await getEventValuesForDateRangeComplete(
+              event.id,
+              lastWeekStart,
+              lastWeekEnd,
+              event.type
+            );
+            const thisWeekData = await getEventValuesForDateRangeComplete(
+              event.id,
+              thisWeekStart,
+              thisWeekEnd,
+              event.type
+            );
 
-          const comparison: WeekComparison = {
-            eventName: event.name,
-            eventType: event.type,
-            color: event.color,
-            trend: 'stable',
-          };
+            const comparison: WeekComparison = {
+              eventName: event.name,
+              eventType: event.type,
+              color: event.color,
+              trend: 'stable',
+            };
 
-          if (event.type === 'boolean') {
-            const lastWeekTrue = lastWeekData.filter(d => d.value === 'true' || d.value === '1').length;
-            const thisWeekTrue = thisWeekData.filter(d => d.value === 'true' || d.value === '1').length;
+            if (event.type === 'boolean') {
+              const lastWeekTrue = lastWeekData.filter(d => d.value === 'true' || d.value === '1').length;
+              const thisWeekTrue = thisWeekData.filter(d => d.value === 'true' || d.value === '1').length;
 
-            comparison.lastWeekAvg = (lastWeekTrue / lastWeekData.length) * 100;
-            comparison.thisWeekAvg = (thisWeekTrue / thisWeekData.length) * 100;
-            comparison.change = comparison.thisWeekAvg - comparison.lastWeekAvg;
-            comparison.changePercent = comparison.lastWeekAvg > 0
-              ? (comparison.change / comparison.lastWeekAvg) * 100
-              : 0;
-          } else if (event.type === 'number') {
-            const lastWeekNums = lastWeekData
-              .map(d => parseFloat(d.value as string))
-              .filter(v => !isNaN(v) && v > 0);
-            const thisWeekNums = thisWeekData
-              .map(d => parseFloat(d.value as string))
-              .filter(v => !isNaN(v) && v > 0);
-
-            if (lastWeekNums.length > 0 && thisWeekNums.length > 0) {
-              comparison.lastWeekAvg = lastWeekNums.reduce((a, b) => a + b, 0) / lastWeekNums.length;
-              comparison.thisWeekAvg = thisWeekNums.reduce((a, b) => a + b, 0) / thisWeekNums.length;
+              comparison.lastWeekAvg = lastWeekData.length > 0 ? (lastWeekTrue / lastWeekData.length) * 100 : 0;
+              comparison.thisWeekAvg = thisWeekData.length > 0 ? (thisWeekTrue / thisWeekData.length) * 100 : 0;
               comparison.change = comparison.thisWeekAvg - comparison.lastWeekAvg;
               comparison.changePercent = comparison.lastWeekAvg > 0
                 ? (comparison.change / comparison.lastWeekAvg) * 100
                 : 0;
-            }
-          }
+            } else if (event.type === 'number') {
+              const lastWeekNums = lastWeekData
+                .map(d => parseFloat(d.value as string))
+                .filter(v => !isNaN(v) && v > 0);
+              const thisWeekNums = thisWeekData
+                .map(d => parseFloat(d.value as string))
+                .filter(v => !isNaN(v) && v > 0);
 
-          // Determine trend
-          if (comparison.change !== undefined) {
-            if (Math.abs(comparison.change) < 0.01) {
-              comparison.trend = 'stable';
-            } else if (comparison.change > 0) {
-              comparison.trend = 'up';
-            } else {
-              comparison.trend = 'down';
+              if (lastWeekNums.length > 0 && thisWeekNums.length > 0) {
+                comparison.lastWeekAvg = lastWeekNums.reduce((a, b) => a + b, 0) / lastWeekNums.length;
+                comparison.thisWeekAvg = thisWeekNums.reduce((a, b) => a + b, 0) / thisWeekNums.length;
+                comparison.change = comparison.thisWeekAvg - comparison.lastWeekAvg;
+                comparison.changePercent = comparison.lastWeekAvg > 0
+                  ? (comparison.change / comparison.lastWeekAvg) * 100
+                  : 0;
+              }
             }
-          }
 
-          return comparison;
-        })
+            // Determine trend
+            if (comparison.change !== undefined) {
+              if (Math.abs(comparison.change) < 0.01) {
+                comparison.trend = 'stable';
+              } else if (comparison.change > 0) {
+                comparison.trend = 'up';
+              } else {
+                comparison.trend = 'down';
+              }
+            }
+
+            return comparison;
+          })
       );
       setWeekComparisons(weekComps);
 
@@ -451,8 +483,8 @@ export default function DashboardScreen() {
             const lastMonthTrue = lastMonthData.filter(d => d.value === 'true' || d.value === '1').length;
             const thisMonthTrue = thisMonthData.filter(d => d.value === 'true' || d.value === '1').length;
 
-            comparison.lastMonthAvg = (lastMonthTrue / lastMonthData.length) * 100;
-            comparison.thisMonthAvg = (thisMonthTrue / thisMonthData.length) * 100;
+            comparison.lastMonthAvg = lastMonthData.length > 0 ? (lastMonthTrue / lastMonthData.length) * 100 : 0;
+            comparison.thisMonthAvg = thisMonthData.length > 0 ? (thisMonthTrue / thisMonthData.length) * 100 : 0;
             comparison.change = comparison.thisMonthAvg - comparison.lastMonthAvg;
             comparison.changePercent = comparison.lastMonthAvg > 0
               ? (comparison.change / comparison.lastMonthAvg) * 100
@@ -491,13 +523,13 @@ export default function DashboardScreen() {
       );
       setMonthComparisons(monthComps);
 
-      // Calculate best day of week
+      // Calculate best day of week (last 30 days)
       const dayStats: Record<number, { total: number; completed: number }> = {};
       for (let i = 0; i < 7; i++) {
         dayStats[i] = { total: 0, completed: 0 };
       }
 
-      for (let i = 0; i < 90; i++) {
+      for (let i = 0; i < 30; i++) {
         const date = subDays(today, i);
         const dateStr = format(date, 'yyyy-MM-dd');
         const dayIndex = getDay(date);
@@ -532,8 +564,9 @@ export default function DashboardScreen() {
       setDayOfWeekStats(dowStats);
 
       // Generate heatmap data (last 84 days = 12 weeks)
+      const heatmapDays = 84;
       const heatmap: { date: string; count: number }[] = [];
-      for (let i = 83; i >= 0; i--) {
+      for (let i = heatmapDays - 1; i >= 0; i--) {
         const date = subDays(today, i);
         const dateStr = format(date, 'yyyy-MM-dd');
         const dayValues = valuesByDate[dateStr] || [];
@@ -559,65 +592,222 @@ export default function DashboardScreen() {
       }
       setHeatmapData(heatmap);
 
-      // Generate milestones
-      const generatedMilestones: Milestone[] = [];
+      // Calculate average consistency from summaryStats
+      const avgConsistency = summaryStats.length > 0
+        ? summaryStats.reduce((sum, s) => sum + (s.consistency || 0), 0) / summaryStats.length
+        : 0;
 
-      // Longest streak milestone
-      const maxStreak = Math.max(...stats.map(s => s.bestStreak || 0));
-      if (maxStreak >= 7) {
-        generatedMilestones.push({
-          title: '7-Day Streak',
-          description: `Maintained a ${maxStreak}-day streak!`,
+      // Calculate stats for milestones
+      const maxStreak = Math.max(...summaryStats.map(s => s.bestStreak || 0));
+      const totalEventCount = summaryStats.reduce((sum, s) => sum + (s.total || 0), 0);
+
+      // Generate ALL milestones (both achieved and unachieved)
+      const generatedMilestones: Milestone[] = [
+        // Streak Milestones
+        {
+          title: 'First Steps',
+          description: maxStreak >= 3
+            ? 'Started your journey!'
+            : 'Maintain a 3-day streak',
+          icon: FlameIcon,
+          color: '#fbbf24',
+          achieved: maxStreak >= 3,
+        },
+        {
+          title: 'Week Warrior',
+          description: maxStreak >= 7
+            ? `${maxStreak}-day streak!`
+            : 'Maintain a 7-day streak',
           icon: FlameIcon,
           color: '#f97316',
-          achieved: true,
-        });
-      }
-      if (maxStreak >= 30) {
-        generatedMilestones.push({
-          title: '30-Day Streak',
-          description: 'Incredible consistency!',
+          achieved: maxStreak >= 7,
+        },
+        {
+          title: 'Two Weeks Strong',
+          description: maxStreak >= 14
+            ? 'Two weeks of consistency!'
+            : 'Maintain a 14-day streak',
+          icon: FlameIcon,
+          color: '#ea580c',
+          achieved: maxStreak >= 14,
+        },
+        {
+          title: 'Monthly Master',
+          description: maxStreak >= 30
+            ? 'A full month streak!'
+            : 'Reach a 30-day streak',
           icon: TrophyIcon,
           color: '#f59e0b',
-          achieved: true,
-        });
-      }
+          achieved: maxStreak >= 30,
+        },
+        {
+          title: 'Quarter Champion',
+          description: maxStreak >= 90
+            ? '90 days of excellence!'
+            : 'Reach a 90-day streak',
+          icon: TrophyIcon,
+          color: '#d97706',
+          achieved: maxStreak >= 90,
+        },
+        {
+          title: 'Half Year Hero',
+          description: maxStreak >= 180
+            ? 'Six months strong!'
+            : 'Reach a 180-day streak',
+          icon: TrophyIcon,
+          color: '#c2410c',
+          achieved: maxStreak >= 180,
+        },
+        {
+          title: 'Year Long Legend',
+          description: maxStreak >= 365
+            ? 'A full year streak!'
+            : 'Reach a 365-day streak',
+          icon: TrophyIcon,
+          color: '#b91c1c',
+          achieved: maxStreak >= 365,
+        },
 
-      // Tracking streak milestone
-      if (trackingStreak >= 7) {
-        generatedMilestones.push({
-          title: 'Complete Tracker',
-          description: `${trackingStreak} days of full tracking`,
-          icon: CheckCircle2Icon,
-          color: '#22c55e',
-          achieved: true,
-        });
-      }
-
-      // High consistency milestone
-      if (avgConsistency >= 90) {
-        generatedMilestones.push({
+        // Consistency Milestones
+        {
+          title: 'Getting Started',
+          description: avgConsistency >= 50
+            ? `${avgConsistency.toFixed(0)}% consistent`
+            : 'Reach 50% consistency',
+          icon: ZapIcon,
+          color: '#94a3b8',
+          achieved: avgConsistency >= 50,
+        },
+        {
+          title: 'Building Habits',
+          description: avgConsistency >= 70
+            ? `${avgConsistency.toFixed(0)}% consistent`
+            : 'Reach 70% consistency',
+          icon: ZapIcon,
+          color: '#64748b',
+          achieved: avgConsistency >= 70,
+        },
+        {
+          title: 'Consistency Pro',
+          description: avgConsistency >= 80
+            ? `${avgConsistency.toFixed(0)}% consistent`
+            : 'Reach 80% consistency',
+          icon: ZapIcon,
+          color: '#06b6d4',
+          achieved: avgConsistency >= 80,
+        },
+        {
           title: 'Consistency Champion',
-          description: `${avgConsistency.toFixed(0)}% tracking consistency`,
+          description: avgConsistency >= 90
+            ? `${avgConsistency.toFixed(0)}% consistent`
+            : 'Reach 90% consistency',
           icon: ZapIcon,
           color: '#3b82f6',
-          achieved: true,
-        });
-      }
+          achieved: avgConsistency >= 90,
+        },
+        {
+          title: 'Perfect Tracker',
+          description: avgConsistency >= 95
+            ? `${avgConsistency.toFixed(0)}% consistent!`
+            : 'Reach 95% consistency',
+          icon: ZapIcon,
+          color: '#2563eb',
+          achieved: avgConsistency >= 95,
+        },
 
-      // Total events milestone
-      const totalEventCount = stats.reduce((sum, s) => sum + (s.total || 0), 0);
-      if (totalEventCount >= 100) {
-        generatedMilestones.push({
+        // Total Events Milestones
+        {
+          title: 'Getting Active',
+          description: totalEventCount >= 50
+            ? '50+ events logged'
+            : 'Log 50 total events',
+          icon: AwardIcon,
+          color: '#a78bfa',
+          achieved: totalEventCount >= 50,
+        },
+        {
           title: 'Century Club',
-          description: '100+ total events logged',
+          description: totalEventCount >= 100
+            ? '100+ events logged'
+            : 'Log 100 total events',
           icon: AwardIcon,
           color: '#8b5cf6',
-          achieved: true,
-        });
-      }
+          achieved: totalEventCount >= 100,
+        },
+        {
+          title: 'Quarter Thousand',
+          description: totalEventCount >= 250
+            ? '250+ events logged'
+            : 'Log 250 total events',
+          icon: AwardIcon,
+          color: '#7c3aed',
+          achieved: totalEventCount >= 250,
+        },
+        {
+          title: 'Half Thousand',
+          description: totalEventCount >= 500
+            ? '500+ events logged!'
+            : 'Log 500 total events',
+          icon: AwardIcon,
+          color: '#6d28d9',
+          achieved: totalEventCount >= 500,
+        },
+        {
+          title: 'Thousand Club',
+          description: totalEventCount >= 1000
+            ? '1000+ events logged!'
+            : 'Log 1000 total events',
+          icon: AwardIcon,
+          color: '#5b21b6',
+          achieved: totalEventCount >= 1000,
+        },
 
-      setMilestones(generatedMilestones);
+        // Tracking Streak Milestones
+        {
+          title: 'Full Day Tracker',
+          description: trackingStreak >= 1
+            ? 'Tracked everything today!'
+            : 'Track all events for 1 day',
+          icon: CheckCircle2Icon,
+          color: '#86efac',
+          achieved: trackingStreak >= 1,
+        },
+        {
+          title: 'Complete Tracker',
+          description: trackingStreak >= 7
+            ? `${trackingStreak} days of full tracking`
+            : 'Track all events for 7 days',
+          icon: CheckCircle2Icon,
+          color: '#22c55e',
+          achieved: trackingStreak >= 7,
+        },
+        {
+          title: 'Dedicated Logger',
+          description: trackingStreak >= 14
+            ? `${trackingStreak} days complete!`
+            : 'Track all events for 14 days',
+          icon: CheckCircle2Icon,
+          color: '#16a34a',
+          achieved: trackingStreak >= 14,
+        },
+        {
+          title: 'Tracking Master',
+          description: trackingStreak >= 30
+            ? `${trackingStreak} days complete!`
+            : 'Track all events for 30 days',
+          icon: CheckCircle2Icon,
+          color: '#15803d',
+          achieved: trackingStreak >= 30,
+        },
+      ];
+
+      // Sort milestones: achieved first, then unachieved
+      const sortedMilestones = generatedMilestones.sort((a, b) => {
+        if (a.achieved === b.achieved) return 0;
+        return a.achieved ? -1 : 1;
+      });
+
+      setMilestones(sortedMilestones);
 
       // Generate recommendations based on patterns
       const recs: RecommendedAction[] = [];
@@ -641,7 +831,7 @@ export default function DashboardScreen() {
       }
 
       // Streak opportunity
-      stats.forEach(stat => {
+      summaryStats.forEach(stat => {
         if (stat.currentStreak && stat.currentStreak >= 3 && stat.currentStreak < (stat.bestStreak || 0)) {
           recs.push({
             action: `Keep ${stat.eventName} streak going`,
@@ -653,12 +843,10 @@ export default function DashboardScreen() {
 
       setRecommendations(recs);
 
-      // Top correlations (simplified - just showing some example patterns)
-      // In a real implementation, this would analyze actual correlations from patterns
+      // Top correlations
       const correlations: TopCorrelation[] = [];
 
-      // Find events with high completion rates
-      const highPerformers = stats.filter(s => (s.completionRate || 0) > 70 || (s.average || 0) > 0);
+      const highPerformers = summaryStats.filter(s => (s.completionRate || 0) > 70 || (s.average || 0) > 0);
       if (highPerformers.length >= 2) {
         correlations.push({
           description: `Strong habits: ${highPerformers.slice(0, 2).map(s => s.eventName).join(' and ')}`,
@@ -724,62 +912,302 @@ export default function DashboardScreen() {
         }}
       />
       <ScrollView className="flex-1 p-4">
-        {/* Overall Consistency & Tracking Streak */}
-        <View className="mb-6">
-          <View className="flex-row gap-3">
-            <View className="flex-1 bg-gradient-to-br from-[#3b82f6] to-[#2563eb] rounded-lg p-4">
-              <View className="flex-row items-center mb-2">
-                <Icon as={ZapIcon} className="size-5 text-white mr-2" />
-                <Text className="text-sm font-semibold text-white opacity-90">Consistency</Text>
-              </View>
-              <Text className="text-3xl font-bold text-white mb-1">{overallConsistency.toFixed(0)}%</Text>
-              <Text className="text-xs text-white opacity-75">Overall tracking rate</Text>
-            </View>
-
-            <View className="flex-1 bg-gradient-to-br from-[#f97316] to-[#ea580c] rounded-lg p-4">
-              <View className="flex-row items-center mb-2">
-                <Icon as={FlameIcon} className="size-5 text-white mr-2" />
-                <Text className="text-sm font-semibold text-white opacity-90">Streak</Text>
-              </View>
-              <Text className="text-3xl font-bold text-white mb-1">{trackingStreak}</Text>
-              <Text className="text-xs text-white opacity-75">days tracked</Text>
-            </View>
-          </View>
-        </View>
-
         {/* Milestones */}
-        {milestones.length > 0 && (
-          <View className="mb-6">
-            <View className="flex-row items-center mb-3">
+        <View className="mb-6">
+          <View className="flex-row items-center justify-between mb-3">
+            <View className="flex-row items-center">
               <Icon as={TrophyIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
               <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
                 Milestones
               </Text>
             </View>
-            <View className="flex-row flex-wrap gap-3">
-              {milestones.map((milestone, index) => (
+            {milestones.length > 4 && (
+              <Pressable onPress={() => setShowAllMilestones(!showAllMilestones)}>
+                <Text className="text-sm text-[#3b82f6] dark:text-[#60a5fa]">
+                  {showAllMilestones ? 'Show Less' : `Show All (${milestones.length})`}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+          <View className="flex-row flex-wrap gap-3">
+            {(showAllMilestones ? milestones : milestones.slice(0, 4)).map((milestone, index) => (
+              <View
+                key={index}
+                className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-3 flex-row items-center"
+                style={{
+                  width: (screenWidth - 40) / 2 - 6,
+                  opacity: milestone.achieved ? 1 : 0.4
+                }}
+              >
+                <View
+                  className="w-10 h-10 rounded-full items-center justify-center mr-3"
+                  style={{ backgroundColor: milestone.color + '20' }}
+                >
+                  <Icon as={milestone.icon} size={20} color={milestone.color} />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-semibold text-[#0a0a0a] dark:text-[#fafafa]">
+                    {milestone.title}
+                  </Text>
+                  <Text className="text-xs text-[#737373] dark:text-[#a3a3a3]">
+                    {milestone.description}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Personal Records */}
+        <View className="mb-6">
+          <View className="flex-row items-center mb-3">
+            <Icon as={AwardIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
+            <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
+              Personal Records
+            </Text>
+          </View>
+          <View className="gap-3">
+            {summaryStats
+              .filter(stat => stat.eventType === 'boolean' && stat.bestStreak && stat.bestStreak > 0)
+              .sort((a, b) => (b.bestStreak || 0) - (a.bestStreak || 0))
+              .slice(0, 5)
+              .map((stat, index) => (
                 <View
                   key={index}
-                  className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-3 flex-row items-center"
-                  style={{ width: (screenWidth - 40) / 2 - 6 }}
+                  className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4 flex-row items-center justify-between"
+                  style={{ borderLeftWidth: 4, borderLeftColor: stat.color }}
                 >
-                  <View
-                    className="w-10 h-10 rounded-full items-center justify-center mr-3"
-                    style={{ backgroundColor: milestone.color + '20' }}
-                  >
-                    <Icon as={milestone.icon} size={20} color={milestone.color} />
-                  </View>
                   <View className="flex-1">
-                    <Text className="text-sm font-semibold text-[#0a0a0a] dark:text-[#fafafa]">
-                      {milestone.title}
+                    <Text className="text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa]">
+                      {stat.eventName}
                     </Text>
-                    <Text className="text-xs text-[#737373] dark:text-[#a3a3a3]">
-                      {milestone.description}
+                    <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">
+                      Longest Streak
+                    </Text>
+                  </View>
+                  <View className="items-end">
+                    <Text className="text-2xl font-bold text-[#f59e0b]">
+                      {stat.bestStreak}
+                    </Text>
+                    <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">
+                      days
                     </Text>
                   </View>
                 </View>
               ))}
+            {summaryStats.filter(stat => stat.eventType === 'boolean' && stat.bestStreak && stat.bestStreak > 0).length === 0 && (
+              <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 items-center">
+                <Text className="text-sm text-[#737373] dark:text-[#a3a3a3] text-center">
+                  No streaks yet. Keep tracking to build your records!
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Best Day of Week */}
+        <View className="mb-6">
+          <View className="flex-row items-center mb-3">
+            <Icon as={TargetIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
+            <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
+              Best Days of Week
+            </Text>
+          </View>
+          <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4">
+            {dayOfWeekStats.slice(0, 7).map((dayStat, index) => (
+              <View key={index} className="mb-3 last:mb-0">
+                <View className="flex-row items-center justify-between mb-1">
+                  <Text className="text-sm font-medium text-[#0a0a0a] dark:text-[#fafafa]">
+                    {dayStat.day}
+                  </Text>
+                  <Text className="text-sm font-semibold text-[#3b82f6]">
+                    {dayStat.completionRate.toFixed(0)}%
+                  </Text>
+                </View>
+                <View className="h-2 bg-[#e5e5e5] dark:bg-[#262626] rounded-full overflow-hidden">
+                  <View
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${dayStat.completionRate}%`,
+                      backgroundColor: index === 0 ? '#22c55e' : '#3b82f6',
+                    }}
+                  />
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Comparisons with Tabs */}
+        {(weekComparisons.length > 0 || monthComparisons.filter(c => c.eventType !== 'string').length > 0) && (
+          <View className="mb-6">
+            {/* Tab Buttons */}
+            <View className="flex-row gap-2 mb-3">
+              <Pressable
+                onPress={() => setComparisonView('week')}
+                className={`flex-1 py-3 px-4 rounded-lg ${
+                  comparisonView === 'week'
+                    ? 'bg-[#0a0a0a] dark:bg-[#fafafa]'
+                    : 'bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626]'
+                }`}
+              >
+                <Text
+                  className={`text-center font-semibold ${
+                    comparisonView === 'week'
+                      ? 'text-white dark:text-[#0a0a0a]'
+                      : 'text-[#737373] dark:text-[#a3a3a3]'
+                  }`}
+                >
+                  Week
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setComparisonView('month')}
+                className={`flex-1 py-3 px-4 rounded-lg ${
+                  comparisonView === 'month'
+                    ? 'bg-[#0a0a0a] dark:bg-[#fafafa]'
+                    : 'bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626]'
+                }`}
+              >
+                <Text
+                  className={`text-center font-semibold ${
+                    comparisonView === 'month'
+                      ? 'text-white dark:text-[#0a0a0a]'
+                      : 'text-[#737373] dark:text-[#a3a3a3]'
+                  }`}
+                >
+                  Month
+                </Text>
+              </Pressable>
             </View>
+
+            {/* Week Comparison */}
+            {comparisonView === 'week' && weekComparisons.length > 0 && (
+              <View>
+                <View className="flex-row items-center mb-3">
+                  <Icon as={TrendingUpIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
+                  <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
+                    This Week vs Last Week
+                  </Text>
+                </View>
+                <View className="gap-3">
+                  {weekComparisons.map((comp, index) => (
+                    <View
+                      key={index}
+                      className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4"
+                      style={{ borderLeftWidth: 4, borderLeftColor: comp.color }}
+                    >
+                      <Text className="text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa] mb-2">
+                        {comp.eventName}
+                      </Text>
+                      <View className="gap-2">
+                        <View className="flex-row items-center justify-between">
+                          <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Last Week</Text>
+                          <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">
+                            {comp.lastWeekAvg?.toFixed(1)}{comp.eventType === 'boolean' ? '%' : ''}
+                          </Text>
+                        </View>
+                        <View className="flex-row items-center justify-between">
+                          <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">This Week</Text>
+                          <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">
+                            {comp.thisWeekAvg?.toFixed(1)}{comp.eventType === 'boolean' ? '%' : ''}
+                          </Text>
+                        </View>
+                        {comp.change !== undefined && (
+                          <View className="flex-row items-center justify-between mt-1 pt-2 border-t border-[#e5e5e5] dark:border-[#262626]">
+                            <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Change</Text>
+                            <View className="flex-row items-center gap-1">
+                              {comp.trend === 'up' && (
+                                <Icon as={TrendingUpIcon} className="size-4 text-[#22c55e]" />
+                              )}
+                              {comp.trend === 'down' && (
+                                <Icon as={TrendingDownIcon} className="size-4 text-[#ef4444]" />
+                              )}
+                              <Text
+                                className={`text-base font-semibold ${
+                                  comp.trend === 'up'
+                                    ? 'text-[#22c55e]'
+                                    : comp.trend === 'down'
+                                    ? 'text-[#ef4444]'
+                                    : 'text-[#737373] dark:text-[#a3a3a3]'
+                                }`}
+                              >
+                                {comp.change > 0 ? '+' : ''}{comp.change.toFixed(1)}
+                                {comp.eventType === 'boolean' ? '%' : ''}
+                              </Text>
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Month Comparison */}
+            {comparisonView === 'month' && monthComparisons.filter(c => c.eventType !== 'string').length > 0 && (
+              <View>
+                <View className="flex-row items-center mb-3">
+                  <Icon as={CalendarIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
+                  <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
+                    This Month vs Last Month
+                  </Text>
+                </View>
+                <View className="gap-3">
+                  {monthComparisons.filter(c => c.eventType !== 'string').map((comp, index) => (
+                    <View
+                      key={index}
+                      className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4"
+                      style={{ borderLeftWidth: 4, borderLeftColor: comp.color }}
+                    >
+                      <Text className="text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa] mb-2">
+                        {comp.eventName}
+                      </Text>
+                      <View className="gap-2">
+                        <View className="flex-row items-center justify-between">
+                          <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Last Month</Text>
+                          <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">
+                            {comp.lastMonthAvg?.toFixed(1)}{comp.eventType === 'boolean' ? '%' : ''}
+                          </Text>
+                        </View>
+                        <View className="flex-row items-center justify-between">
+                          <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">This Month</Text>
+                          <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">
+                            {comp.thisMonthAvg?.toFixed(1)}{comp.eventType === 'boolean' ? '%' : ''}
+                          </Text>
+                        </View>
+                        {comp.change !== undefined && (
+                          <View className="flex-row items-center justify-between mt-1 pt-2 border-t border-[#e5e5e5] dark:border-[#262626]">
+                            <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Change</Text>
+                            <View className="flex-row items-center gap-1">
+                              {comp.trend === 'up' && (
+                                <Icon as={TrendingUpIcon} className="size-4 text-[#22c55e]" />
+                              )}
+                              {comp.trend === 'down' && (
+                                <Icon as={TrendingDownIcon} className="size-4 text-[#ef4444]" />
+                              )}
+                              <Text
+                                className={`text-base font-semibold ${
+                                  comp.trend === 'up'
+                                    ? 'text-[#22c55e]'
+                                    : comp.trend === 'down'
+                                    ? 'text-[#ef4444]'
+                                    : 'text-[#737373] dark:text-[#a3a3a3]'
+                                }`}
+                              >
+                                {comp.change > 0 ? '+' : ''}{comp.change.toFixed(1)}
+                                {comp.eventType === 'boolean' ? '%' : ''}
+                              </Text>
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
           </View>
         )}
 
@@ -817,76 +1245,100 @@ export default function DashboardScreen() {
           </View>
         )}
 
-        {/* Activity Heatmap */}
-        <View className="mb-6">
-          <View className="flex-row items-center justify-between mb-3">
-            <View className="flex-row items-center">
-              <Icon as={CalendarIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
-              <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
-                Activity Heatmap
-              </Text>
-            </View>
-            <Text className="text-xs text-[#737373] dark:text-[#a3a3a3]">Last 12 weeks</Text>
-          </View>
-          <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4">
-            <ActivityHeatmap data={heatmapData} />
-            <View className="flex-row items-center justify-between mt-3">
-              <Text className="text-xs text-[#737373] dark:text-[#a3a3a3]">Less</Text>
-              <View className="flex-row gap-1">
-                <View className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#e5e5e5' }} />
-                <View className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#f97316' }} />
-                <View className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#fbbf24' }} />
-                <View className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#84cc16' }} />
-                <View className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#22c55e' }} />
-              </View>
-              <Text className="text-xs text-[#737373] dark:text-[#a3a3a3]">More</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Best Day of Week */}
-        <View className="mb-6">
-          <View className="flex-row items-center mb-3">
-            <Icon as={TargetIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
-            <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
-              Best Days of Week
-            </Text>
-          </View>
-          <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4">
-            {dayOfWeekStats.slice(0, 7).map((dayStat, index) => (
-              <View key={index} className="mb-3 last:mb-0">
-                <View className="flex-row items-center justify-between mb-1">
-                  <Text className="text-sm font-medium text-[#0a0a0a] dark:text-[#fafafa]">
-                    {dayStat.day}
-                  </Text>
-                  <Text className="text-sm font-semibold text-[#3b82f6]">
-                    {dayStat.completionRate.toFixed(0)}%
-                  </Text>
-                </View>
-                <View className="h-2 bg-[#e5e5e5] dark:bg-[#262626] rounded-full overflow-hidden">
-                  <View
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${dayStat.completionRate}%`,
-                      backgroundColor: index === 0 ? '#22c55e' : '#3b82f6',
-                    }}
-                  />
-                </View>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Summary Stats with Trends */}
+        {/* Summary Stats with Trends & Sparklines */}
         <View className="mb-6">
           <View className="flex-row items-center mb-3">
             <Icon as={ActivityIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
             <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
-              Summary (Last 30 Days)
+              Summary
             </Text>
           </View>
-          <View className="gap-3">
-            {summaryStats.map((stat, index) => (
+
+          {/* Summary Time Range Tabs */}
+          <View className="flex-row gap-2 mb-3">
+            <Pressable
+              onPress={() => setSummaryView('7days')}
+              className={`flex-1 py-2 px-3 rounded-lg ${
+                summaryView === '7days'
+                  ? 'bg-[#0a0a0a] dark:bg-[#fafafa]'
+                  : 'bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626]'
+              }`}
+            >
+              <Text
+                className={`text-center text-sm font-semibold ${
+                  summaryView === '7days'
+                    ? 'text-white dark:text-[#0a0a0a]'
+                    : 'text-[#737373] dark:text-[#a3a3a3]'
+                }`}
+              >
+                7d
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setSummaryView('15days')}
+              className={`flex-1 py-2 px-3 rounded-lg ${
+                summaryView === '15days'
+                  ? 'bg-[#0a0a0a] dark:bg-[#fafafa]'
+                  : 'bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626]'
+              }`}
+            >
+              <Text
+                className={`text-center text-sm font-semibold ${
+                  summaryView === '15days'
+                    ? 'text-white dark:text-[#0a0a0a]'
+                    : 'text-[#737373] dark:text-[#a3a3a3]'
+                }`}
+              >
+                15d
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setSummaryView('1month')}
+              className={`flex-1 py-2 px-3 rounded-lg ${
+                summaryView === '1month'
+                  ? 'bg-[#0a0a0a] dark:bg-[#fafafa]'
+                  : 'bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626]'
+              }`}
+            >
+              <Text
+                className={`text-center text-sm font-semibold ${
+                  summaryView === '1month'
+                    ? 'text-white dark:text-[#0a0a0a]'
+                    : 'text-[#737373] dark:text-[#a3a3a3]'
+                }`}
+              >
+                1m
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setSummaryView('6months')}
+              className={`flex-1 py-2 px-3 rounded-lg ${
+                summaryView === '6months'
+                  ? 'bg-[#0a0a0a] dark:bg-[#fafafa]'
+                  : 'bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626]'
+              }`}
+            >
+              <Text
+                className={`text-center text-sm font-semibold ${
+                  summaryView === '6months'
+                    ? 'text-white dark:text-[#0a0a0a]'
+                    : 'text-[#737373] dark:text-[#a3a3a3]'
+                }`}
+              >
+                6m
+              </Text>
+            </Pressable>
+          </View>
+
+          {isSummaryLoading ? (
+            <View className="gap-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-32 w-full rounded-lg" />
+              ))}
+            </View>
+          ) : (
+            <View className="gap-3">
+              {summaryStats.map((stat, index) => (
               <View
                 key={index}
                 className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4"
@@ -970,172 +1422,9 @@ export default function DashboardScreen() {
                   </View>
                 )}
               </View>
-            ))}
-          </View>
-        </View>
-
-        {/* This Month vs Last Month */}
-        {monthComparisons.filter(c => c.eventType !== 'string').length > 0 && (
-          <View className="mb-6">
-            <View className="flex-row items-center mb-3">
-              <Icon as={CalendarIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
-              <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
-                This Month vs Last Month
-              </Text>
-            </View>
-            <View className="gap-3">
-              {monthComparisons.filter(c => c.eventType !== 'string').map((comp, index) => (
-                <View
-                  key={index}
-                  className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4"
-                  style={{ borderLeftWidth: 4, borderLeftColor: comp.color }}
-                >
-                  <Text className="text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa] mb-2">
-                    {comp.eventName}
-                  </Text>
-
-                  <View className="gap-2">
-                    <View className="flex-row items-center justify-between">
-                      <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Last Month</Text>
-                      <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">
-                        {comp.lastMonthAvg?.toFixed(1)}{comp.eventType === 'boolean' ? '%' : ''}
-                      </Text>
-                    </View>
-                    <View className="flex-row items-center justify-between">
-                      <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">This Month</Text>
-                      <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">
-                        {comp.thisMonthAvg?.toFixed(1)}{comp.eventType === 'boolean' ? '%' : ''}
-                      </Text>
-                    </View>
-                    {comp.change !== undefined && (
-                      <View className="flex-row items-center justify-between mt-1 pt-2 border-t border-[#e5e5e5] dark:border-[#262626]">
-                        <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Change</Text>
-                        <View className="flex-row items-center gap-1">
-                          {comp.trend === 'up' && (
-                            <Icon as={TrendingUpIcon} className="size-4 text-[#22c55e]" />
-                          )}
-                          {comp.trend === 'down' && (
-                            <Icon as={TrendingDownIcon} className="size-4 text-[#ef4444]" />
-                          )}
-                          <Text
-                            className={`text-base font-semibold ${
-                              comp.trend === 'up'
-                                ? 'text-[#22c55e]'
-                                : comp.trend === 'down'
-                                ? 'text-[#ef4444]'
-                                : 'text-[#737373] dark:text-[#a3a3a3]'
-                            }`}
-                          >
-                            {comp.change > 0 ? '+' : ''}{comp.change.toFixed(1)}
-                            {comp.eventType === 'boolean' ? '%' : ''}
-                            {comp.changePercent !== undefined && comp.changePercent !== 0 && (
-                              <Text className="text-sm"> ({comp.changePercent > 0 ? '+' : ''}{comp.changePercent.toFixed(0)}%)</Text>
-                            )}
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-                  </View>
-                </View>
               ))}
             </View>
-          </View>
-        )}
-
-        {/* Top Correlations */}
-        {topCorrelations.length > 0 && (
-          <View className="mb-6">
-            <View className="flex-row items-center justify-between mb-3">
-              <View className="flex-row items-center">
-                <Icon as={SparklesIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
-                <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
-                  Top Patterns
-                </Text>
-              </View>
-              <Pressable onPress={() => router.push('/patterns' as any)}>
-                <Text className="text-sm font-semibold text-[#3b82f6]">See All →</Text>
-              </Pressable>
-            </View>
-            <View className="gap-3">
-              {topCorrelations.map((corr, index) => (
-                <View
-                  key={index}
-                  className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4"
-                >
-                  <View className="flex-row items-start justify-between mb-2">
-                    <Text className="flex-1 text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa] mr-2">
-                      {corr.description}
-                    </Text>
-                    <View className="bg-[#8b5cf6]/10 px-2 py-1 rounded">
-                      <Text className="text-xs font-semibold text-[#8b5cf6]">
-                        {corr.confidence.toFixed(0)}%
-                      </Text>
-                    </View>
-                  </View>
-                  <View className="flex-row gap-2">
-                    {corr.events.map((event, idx) => (
-                      <View
-                        key={idx}
-                        className="px-2 py-1 rounded"
-                        style={{ backgroundColor: event.color + '20' }}
-                      >
-                        <Text className="text-xs font-medium" style={{ color: event.color }}>
-                          {event.name}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Personal Records */}
-        <View className="mb-6">
-          <View className="flex-row items-center mb-3">
-            <Icon as={AwardIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
-            <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
-              Personal Records
-            </Text>
-          </View>
-          <View className="gap-3">
-            {summaryStats
-              .filter(stat => stat.eventType === 'boolean' && stat.bestStreak && stat.bestStreak > 0)
-              .sort((a, b) => (b.bestStreak || 0) - (a.bestStreak || 0))
-              .slice(0, 5)
-              .map((stat, index) => (
-                <View
-                  key={index}
-                  className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4 flex-row items-center justify-between"
-                  style={{ borderLeftWidth: 4, borderLeftColor: stat.color }}
-                >
-                  <View className="flex-1">
-                    <Text className="text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa]">
-                      {stat.eventName}
-                    </Text>
-                    <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">
-                      Longest Streak
-                    </Text>
-                  </View>
-                  <View className="items-end">
-                    <Text className="text-2xl font-bold text-[#f59e0b]">
-                      {stat.bestStreak}
-                    </Text>
-                    <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">
-                      days
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            {summaryStats.filter(stat => stat.eventType === 'boolean' && stat.bestStreak && stat.bestStreak > 0).length === 0 && (
-              <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 items-center">
-                <Text className="text-sm text-[#737373] dark:text-[#a3a3a3] text-center">
-                  No streaks yet. Keep tracking to build your records!
-                </Text>
-              </View>
-            )}
-          </View>
+          )}
         </View>
       </ScrollView>
     </View>

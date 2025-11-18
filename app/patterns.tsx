@@ -4,7 +4,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Icon } from '@/components/ui/icon';
 import { Stack, router } from 'expo-router';
 import * as React from 'react';
-import { View, ScrollView, Dimensions, Pressable, Modal, TouchableWithoutFeedback, Alert } from 'react-native';
+import { View, ScrollView, Dimensions, Pressable, Modal, TouchableWithoutFeedback } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getEventValuesForDateRangeComplete } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
@@ -31,11 +31,15 @@ interface EventDataPoint {
   value: number | string;
 }
 
+type PatternStrength = 'weak' | 'moderate' | 'strong' | 'very-strong';
+
 interface Pattern {
   description: string;
   confidence: number; // 0-100%
-  type: 'threshold' | 'co-occurrence' | 'sequence';
+  type: 'co-occurrence';
   events: Event[];
+  strength: PatternStrength;
+  sampleSize: number;
 }
 
 type TimeRange = '7d' | '30d' | '90d' | '365d';
@@ -73,13 +77,12 @@ export default function DashboardScreen() {
       setIsLoading(true);
       try {
         const endDate = new Date();
-        const startDate = subDays(endDate, 365); // Load 1 year instead of 2 for faster performance
+        const startDate = subDays(endDate, 365); // Load 1 year for pattern detection
         const startStr = format(startDate, 'yyyy-MM-dd');
         const endStr = format(endDate, 'yyyy-MM-dd');
 
-        // Load all data for pattern detection using the complete function
+        // Load all data for pattern detection
         const dataPromises = events.map(async (event) => {
-          // Use the new function that fills in missing dates for boolean events
           const values = await getEventValuesForDateRangeComplete(event.id, startStr, endStr, event.type);
 
           const dataPoints: EventDataPoint[] = values.map((v) => ({
@@ -98,9 +101,8 @@ export default function DashboardScreen() {
         setEventData(allData);
         setIsLoading(false);
 
-        // Discover patterns from ALL data with loading state - run AFTER UI is ready
+        // Discover patterns from ALL data with loading state
         setIsAnalyzingPatterns(true);
-        // Use requestAnimationFrame for better performance
         requestAnimationFrame(() => {
           setTimeout(() => {
             try {
@@ -111,7 +113,7 @@ export default function DashboardScreen() {
             } finally {
               setIsAnalyzingPatterns(false);
             }
-          }, 500); // Longer delay to let charts render first
+          }, 500);
         });
       } catch (error) {
         console.error('Failed to analyze patterns:', error);
@@ -143,6 +145,14 @@ export default function DashboardScreen() {
 
     setChartData(filteredChartData);
   }, [eventData, timeRange]);
+
+  // Helper function to calculate pattern strength
+  const calculateStrength = (confidence: number): PatternStrength => {
+    if (confidence >= 90) return 'very-strong';
+    if (confidence >= 80) return 'strong';
+    if (confidence >= 65) return 'moderate';
+    return 'weak';
+  };
 
   const discoverPatterns = (
     allData: { event: Event; dataPoints: EventDataPoint[] }[]
@@ -202,6 +212,7 @@ export default function DashboardScreen() {
         numberAvg?: number;
       }>;
       relatedEvents: Event[];
+      sampleSize: number;
     }
 
     const bucketPatterns: BucketPattern[] = [];
@@ -296,6 +307,7 @@ export default function DashboardScreen() {
           bucket: bucket.name,
           parts,
           relatedEvents,
+          sampleSize: bucket.dates.length,
         });
       }
     }
@@ -337,6 +349,7 @@ export default function DashboardScreen() {
     for (const group of groups.values()) {
       const mergedParts: string[] = [];
       const allRelatedEvents = group.patterns[0].relatedEvents;
+      const totalSampleSize = group.patterns.reduce((sum, p) => sum + p.sampleSize, 0);
 
       // Get all parts from first pattern as template
       const templateParts = group.patterns[0].parts;
@@ -425,16 +438,19 @@ export default function DashboardScreen() {
       }
 
       if (mergedParts.length >= 1) {
+        const confidence = Math.min(95, 50 + mergedParts.length * 5);
         mergedPatterns.push({
           description: mergedParts.join(' → '),
-          confidence: Math.min(95, 50 + mergedParts.length * 5),
+          confidence,
           type: 'co-occurrence',
           events: allRelatedEvents,
+          strength: calculateStrength(confidence),
+          sampleSize: totalSampleSize,
         });
       }
     }
 
-    // Return ALL merged patterns sorted by confidence
+    // Return ALL patterns sorted by confidence (highest first)
     return mergedPatterns.sort((a, b) => b.confidence - a.confidence);
   };
 
@@ -448,6 +464,33 @@ export default function DashboardScreen() {
     if (confidence >= 80) return 'High confidence';
     if (confidence >= 60) return 'Medium confidence';
     return 'Low confidence';
+  };
+
+  const getStrengthColor = (strength: PatternStrength) => {
+    switch (strength) {
+      case 'very-strong': return '#16a34a'; // green-600
+      case 'strong': return '#2563eb'; // blue-600
+      case 'moderate': return '#f59e0b'; // amber-500
+      case 'weak': return '#94a3b8'; // slate-400
+    }
+  };
+
+  const getStrengthLabel = (strength: PatternStrength) => {
+    switch (strength) {
+      case 'very-strong': return 'Very Strong';
+      case 'strong': return 'Strong';
+      case 'moderate': return 'Moderate';
+      case 'weak': return 'Weak';
+    }
+  };
+
+  const getStrengthWidth = (strength: PatternStrength) => {
+    switch (strength) {
+      case 'very-strong': return '100%';
+      case 'strong': return '75%';
+      case 'moderate': return '50%';
+      case 'weak': return '25%';
+    }
   };
 
   const CombinedChart = () => {
@@ -739,7 +782,7 @@ export default function DashboardScreen() {
     }
 
     const patternsText = patterns
-      .map((p, i) => `${i + 1}. ${p.description} (${p.confidence}% confidence)`)
+      .map((p, i) => `${i + 1}. ${p.description} (${p.confidence}% confidence, ${getStrengthLabel(p.strength)})`)
       .join('\n\n');
 
     await Clipboard.setStringAsync(patternsText);
@@ -857,12 +900,9 @@ export default function DashboardScreen() {
               <CombinedChart />
             </View>
 
-            {/* Patterns Section - Always show, just indicate loading state */}
+            {/* Patterns Section */}
             <View className="mb-6">
-              <Text className="text-2xl font-bold mb-1">🔍 Discovered Patterns</Text>
-              <Text className="text-muted-foreground mb-4">
-                {isAnalyzingPatterns ? 'Analyzing your data...' : 'Based on your tracked data'}
-              </Text>
+              <Text className="text-2xl font-bold mb-4">🔍 Discovered Patterns</Text>
 
               {isAnalyzingPatterns ? (
                 /* Skeleton loading effect */
@@ -940,6 +980,27 @@ export default function DashboardScreen() {
                         {renderColoredDescription()}
                       </View>
 
+                      {/* Strength Visual Indicator */}
+                      <View className="mb-3">
+                        <View className="flex-row items-center justify-between mb-1">
+                          <Text className="text-xs font-medium" style={{ color: getStrengthColor(pattern.strength) }}>
+                            {getStrengthLabel(pattern.strength)}
+                          </Text>
+                          <Text className="text-xs text-muted-foreground">
+                            Based on {pattern.sampleSize} occurrences
+                          </Text>
+                        </View>
+                        <View className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <View
+                            className="h-full rounded-full"
+                            style={{
+                              width: getStrengthWidth(pattern.strength),
+                              backgroundColor: getStrengthColor(pattern.strength)
+                            }}
+                          />
+                        </View>
+                      </View>
+
                       {/* Confidence indicator */}
                       <View className="flex-row items-center justify-between">
                         <View className="flex-row items-center">
@@ -950,9 +1011,6 @@ export default function DashboardScreen() {
                             {pattern.confidence}%
                           </Text>
                         </View>
-                        <Text className="text-xs text-muted-foreground capitalize">
-                          {pattern.type.replace('-', ' ')}
-                        </Text>
                       </View>
                     </View>
                   );
