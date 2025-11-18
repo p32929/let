@@ -53,7 +53,7 @@ export default function HomeScreen() {
         variant="ghost"
         className="rounded-full"
         onPress={() => setShowMenu(!showMenu)}
-        disabled={loadingSampleData || isResetting || importingData}
+        disabled={isAnyDialogShowing}
       >
         <Icon as={MoreVerticalIcon} className="size-5" />
       </Button>
@@ -62,12 +62,12 @@ export default function HomeScreen() {
         variant="ghost"
         className="rounded-full"
         onPress={() => router.push('/add-event')}
-        disabled={loadingSampleData || isResetting || importingData}
+        disabled={isAnyDialogShowing}
       >
         <Icon as={PlusIcon} className="size-5" />
       </Button>
     </View>
-  ), [showMenu, loadingSampleData, isResetting, importingData]);
+  ), [showMenu, isAnyDialogShowing]);
 
   // Memoize screen options
   const screenOptions = React.useMemo(() => ({
@@ -287,7 +287,13 @@ export default function HomeScreen() {
   return (
     <>
       <Stack.Screen options={screenOptions} />
-      <View className="flex-1 bg-white dark:bg-[#0a0a0a]">
+
+      {/* Universal Blocking Overlay - Blocks ALL interactions when any dialog is open */}
+      {isAnyDialogShowing && (
+        <View className="absolute inset-0 bg-black/50 z-[99]" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+      )}
+
+      <View className="flex-1 bg-white dark:bg-[#0a0a0a] relative">
         <View className="border-b border-[#e5e5e5] dark:border-[#262626] p-4">
           {/* Week Navigation */}
             <View className="flex-row items-center justify-between mb-4">
@@ -296,14 +302,14 @@ export default function HomeScreen() {
                 variant="ghost"
                 onPress={handlePreviousWeek}
                 className="rounded-full"
-                disabled={loadingSampleData || isResetting || importingData}
+                disabled={isAnyDialogShowing}
               >
                 <Icon as={ChevronLeftIcon} className="size-5" />
               </Button>
               <Pressable
                 onPress={() => setShowCalendar(true)}
                 className="flex-1 items-center"
-                disabled={loadingSampleData || isResetting || importingData}
+                disabled={isAnyDialogShowing}
               >
                 <Text className="text-lg font-semibold text-[#0a0a0a] dark:text-[#fafafa]">
                   {formatDate(weekDays[0], 'MMM d')} - {formatDate(weekDays[6], 'MMM d, yyyy')}
@@ -314,7 +320,7 @@ export default function HomeScreen() {
                 variant="ghost"
                 onPress={handleNextWeek}
                 className="rounded-full"
-                disabled={loadingSampleData || isResetting || importingData}
+                disabled={isAnyDialogShowing}
               >
                 <Icon as={ChevronRightIcon} className="size-5" />
               </Button>
@@ -399,13 +405,12 @@ export default function HomeScreen() {
               </View>
             )}
           </ScrollView>
-        </View>
 
-      {/* Popup Menu */}
-      {showMenu && (
-        <View className="absolute top-0 left-0 right-0 bottom-0 z-50">
+        {/* Popup Menu */}
+        {showMenu && (
+        <View className="absolute top-0 left-0 right-0 bottom-0 z-[100]">
           <Pressable
-            className="absolute inset-0 bg-transparent"
+            className="absolute inset-0 bg-black/30"
             onPress={() => setShowMenu(false)}
           />
           <View
@@ -722,6 +727,7 @@ export default function HomeScreen() {
           </View>
         </View>
       )}
+      </View>
     </>
   );
 }
