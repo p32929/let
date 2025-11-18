@@ -429,12 +429,12 @@ export default function HomeScreen() {
                 if (events.length === 0) {
                   setShowNoEventsDialog(true);
                 } else {
-                  router.push('/dashboard' as any);
+                  router.push('/patterns' as any);
                 }
               }}
             >
               <Icon as={BarChart3Icon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
-              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Dashboard</Text>
+              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Patterns</Text>
             </Pressable>
             <Pressable
               className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
