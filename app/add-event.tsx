@@ -37,6 +37,11 @@ const PRESET_COLORS = [
   '#f43f5e', // rose
 ];
 
+const SCREEN_OPTIONS = {
+  title: 'Add New Event',
+  presentation: 'modal' as const,
+};
+
 export default function AddEventScreen() {
   const [name, setName] = React.useState('');
   const [type, setType] = React.useState<EventType>('boolean');
@@ -70,12 +75,7 @@ export default function AddEventScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: 'Add New Event',
-          presentation: 'modal',
-        }}
-      />
+      <Stack.Screen options={SCREEN_OPTIONS} />
       <ScrollView className="flex-1 bg-background">
         <View className="p-6 gap-6">
           {/* Header */}
@@ -105,33 +105,33 @@ export default function AddEventScreen() {
                 <Pressable
                   key={eventType.value}
                   onPress={() => setType(eventType.value)}
-                  className={`flex-row items-center rounded-lg border-2 p-3 ${
+                  className={`flex-row items-center rounded-lg p-4 ${
                     type === eventType.value
-                      ? 'border-primary bg-primary/10'
-                      : 'border-border bg-card'
+                      ? 'bg-card border-[3px] border-[#171717] dark:border-[#fafafa]'
+                      : 'bg-card border-2 border-border'
                   }`}
                 >
-                  <View className={`size-10 rounded-lg items-center justify-center mr-3 ${
-                    type === eventType.value ? 'bg-primary' : 'bg-muted'
+                  <View className={`size-12 rounded-lg items-center justify-center mr-3 ${
+                    type === eventType.value ? 'bg-[#171717] dark:bg-[#fafafa]' : 'bg-muted'
                   }`}>
                     <Icon
                       as={eventType.icon}
-                      className={`size-5 ${type === eventType.value ? 'text-primary-foreground' : 'text-muted-foreground'}`}
+                      className={`size-6 ${type === eventType.value ? 'text-[#fafafa] dark:text-[#171717]' : 'text-muted-foreground'}`}
                     />
                   </View>
                   <View className="flex-1">
-                    <Text className={`font-semibold ${
-                      type === eventType.value ? 'text-primary' : 'text-foreground'
+                    <Text className={`font-bold text-base ${
+                      type === eventType.value ? 'text-[#171717] dark:text-[#fafafa]' : 'text-foreground'
                     }`}>
                       {eventType.label}
                     </Text>
-                    <Text className="text-xs text-muted-foreground">
+                    <Text className={`text-xs text-muted-foreground`}>
                       {eventType.description}
                     </Text>
                   </View>
                   {type === eventType.value && (
-                    <View className="size-5 rounded-full bg-primary items-center justify-center">
-                      <Icon as={CheckIcon} className="size-3 text-primary-foreground" />
+                    <View className="size-6 rounded-full bg-[#171717] dark:bg-[#fafafa] items-center justify-center">
+                      <Icon as={CheckIcon} className="size-4 text-[#fafafa] dark:text-[#171717]" />
                     </View>
                   )}
                 </Pressable>

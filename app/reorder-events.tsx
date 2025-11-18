@@ -9,10 +9,22 @@ import { reorderEvents } from '@/db/operations/events';
 import { useEventsStore } from '@/lib/stores/events-store';
 import type { Event } from '@/types/events';
 
+const SCREEN_OPTIONS = {
+  title: 'Reorder Events',
+  presentation: 'modal' as const,
+};
+
 export default function ReorderEventsScreen() {
   const { events: storeEvents, refreshEvents } = useEventsStore();
   const [events, setEvents] = React.useState<Event[]>([]);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  // Redirect if no events
+  React.useEffect(() => {
+    if (storeEvents.length === 0) {
+      router.replace('/');
+    }
+  }, [storeEvents.length]);
 
   React.useEffect(() => {
     setEvents([...storeEvents].sort((a, b) => a.order - b.order));
@@ -48,12 +60,7 @@ export default function ReorderEventsScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: 'Reorder Events',
-          presentation: 'modal',
-        }}
-      />
+      <Stack.Screen options={SCREEN_OPTIONS} />
       <View className="flex-1 bg-background">
         <ScrollView className="flex-1 p-4">
           <Text className="text-muted-foreground mb-4">

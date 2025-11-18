@@ -1,7 +1,7 @@
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import * as React from 'react';
 import { View, ScrollView, Dimensions, Pressable, Modal, TouchableWithoutFeedback } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
@@ -36,6 +36,13 @@ export default function DashboardScreen() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [isAnalyzingPatterns, setIsAnalyzingPatterns] = React.useState(false);
   const [timeRange, setTimeRange] = React.useState<TimeRange>('30d');
+
+  // Redirect if no events
+  React.useEffect(() => {
+    if (!isLoading && events.length === 0) {
+      router.replace('/');
+    }
+  }, [events.length, isLoading]);
 
   const getDaysForRange = (range: TimeRange): number => {
     switch (range) {

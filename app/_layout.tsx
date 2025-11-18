@@ -18,33 +18,7 @@ export {
 
 export default function RootLayout() {
   const systemColorScheme = useSystemColorScheme();
-  const { colorScheme, setColorScheme } = useColorScheme();
-
-  // Initialize with system theme on first load
-  React.useEffect(() => {
-    const initializeTheme = async () => {
-      // Check if user has manually set a theme preference
-      const storedTheme = await storage.getItem('nativewind-color-scheme');
-
-      if (!storedTheme && systemColorScheme) {
-        // No stored preference, use system theme
-        setColorScheme(systemColorScheme);
-      }
-    };
-
-    initializeTheme();
-  }, []);
-
-  // Update when system theme changes (if no manual override)
-  React.useEffect(() => {
-    const checkTheme = async () => {
-      const storedTheme = await storage.getItem('nativewind-color-scheme');
-      if (!storedTheme && systemColorScheme) {
-        setColorScheme(systemColorScheme);
-      }
-    };
-    checkTheme();
-  }, [systemColorScheme]);
+  const { colorScheme } = useColorScheme();
 
   const activeColorScheme = colorScheme ?? systemColorScheme ?? 'light';
   const isDark = activeColorScheme === 'dark';

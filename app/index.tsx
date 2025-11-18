@@ -28,6 +28,7 @@ export default function HomeScreen() {
   const [showCalendar, setShowCalendar] = React.useState(false);
   const [showImportDialog, setShowImportDialog] = React.useState(false);
   const [showResetDialog, setShowResetDialog] = React.useState(false);
+  const [showNoEventsDialog, setShowNoEventsDialog] = React.useState(false);
   const [importingData, setImportingData] = React.useState(false);
   const [importProgress, setImportProgress] = React.useState(0);
   const [importMessage, setImportMessage] = React.useState('');
@@ -35,6 +36,34 @@ export default function HomeScreen() {
   const [weekEventCompletion, setWeekEventCompletion] = React.useState<Record<string, { total: number; completed: number }>>({});
   const { events, loadEvents, isLoading } = useEventsStore();
   const { colorScheme, setColorScheme } = useColorScheme();
+
+  // Memoize header right component to prevent re-creation on every render
+  const headerRight = React.useCallback(() => (
+    <View className="flex-row gap-1">
+      <Button
+        size="icon"
+        variant="ghost"
+        className="rounded-full"
+        onPress={() => setShowMenu(!showMenu)}
+      >
+        <Icon as={MoreVerticalIcon} className="size-5" />
+      </Button>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="rounded-full"
+        onPress={() => router.push('/add-event')}
+      >
+        <Icon as={PlusIcon} className="size-5" />
+      </Button>
+    </View>
+  ), [showMenu]);
+
+  // Memoize screen options
+  const screenOptions = React.useMemo(() => ({
+    title: 'Life Events Tracker',
+    headerRight,
+  }), [headerRight]);
 
   // Animated values for swipe gestures
   const translateX = useSharedValue(0);
@@ -145,6 +174,10 @@ export default function HomeScreen() {
   const handleExportData = async () => {
     try {
       setShowMenu(false);
+      if (events.length === 0) {
+        setShowNoEventsDialog(true);
+        return;
+      }
       const data = await exportData();
       await downloadExportFile(data);
     } catch (error) {
@@ -240,31 +273,7 @@ export default function HomeScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: 'Life Events Tracker',
-          headerRight: () => (
-            <View className="flex-row gap-1">
-              <Button
-                size="icon"
-                variant="ghost"
-                className="rounded-full"
-                onPress={() => setShowMenu(!showMenu)}
-              >
-                <Icon as={MoreVerticalIcon} className="size-5" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="rounded-full"
-                onPress={() => router.push('/add-event')}
-              >
-                <Icon as={PlusIcon} className="size-5" />
-              </Button>
-            </View>
-          ),
-        }}
-      />
+      <Stack.Screen options={screenOptions} />
       <View className="flex-1 bg-white dark:bg-[#0a0a0a]">
         <View className="border-b border-[#e5e5e5] dark:border-[#262626] p-4">
           {/* Week Navigation */}
@@ -384,7 +393,11 @@ export default function HomeScreen() {
               className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
               onPress={() => {
                 setShowMenu(false);
-                router.push('/dashboard' as any);
+                if (events.length === 0) {
+                  setShowNoEventsDialog(true);
+                } else {
+                  router.push('/dashboard' as any);
+                }
               }}
             >
               <Icon as={BarChart3Icon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
@@ -394,7 +407,11 @@ export default function HomeScreen() {
               className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
               onPress={() => {
                 setShowMenu(false);
-                router.push('/reorder-events' as any);
+                if (events.length === 0) {
+                  setShowNoEventsDialog(true);
+                } else {
+                  router.push('/reorder-events' as any);
+                }
               }}
             >
               <Icon as={ArrowUpDownIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
@@ -440,6 +457,36 @@ export default function HomeScreen() {
               <Icon as={colorScheme === 'dark' ? SunIcon : MoonIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
               <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">{colorScheme === 'dark' ? 'Light Mode' : 'Dark Mode'}</Text>
             </Pressable>
+          </View>
+        </View>
+      )}
+
+      {/* No Events Dialog */}
+      {showNoEventsDialog && (
+        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
+          <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
+            <Text className="text-xl font-bold mb-2 text-[#0a0a0a] dark:text-[#fafafa]">No Events Found</Text>
+            <Text className="text-[#737373] dark:text-[#a3a3a3] mb-4">
+              You need to add at least one event before accessing this feature. Tap the + button to create your first event.
+            </Text>
+            <View className="flex-row gap-3">
+              <Button
+                variant="outline"
+                onPress={() => setShowNoEventsDialog(false)}
+                className="flex-1"
+              >
+                <Text>Cancel</Text>
+              </Button>
+              <Button
+                onPress={() => {
+                  setShowNoEventsDialog(false);
+                  router.push('/add-event');
+                }}
+                className="flex-1"
+              >
+                <Text>Add Event</Text>
+              </Button>
+            </View>
           </View>
         </View>
       )}
