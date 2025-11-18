@@ -135,9 +135,9 @@ export async function addSampleData(onProgress?: (progress: number, message: str
     const wokeUpEarly = wakeUpIndex < 2; // 6am or 7am
 
     // Sleep (6-10 hours, better on weekends, better when waking up early)
-    const baseSleep = wokeUpEarly ? 7.5 : 6.5;
+    const baseSleep = wokeUpEarly ? 8 : 7;
     const weekendBonus = isWeekend ? 1 : 0;
-    const sleep = baseSleep + weekendBonus + (Math.random() - 0.5) * 2;
+    const sleep = Math.round(baseSleep + weekendBonus + (Math.random() - 0.5) * 2);
 
     // Good day (influenced by sleep, dress color, wake up time)
     const sleepBoost = sleep > 7.5 ? 0.3 : 0;
@@ -154,7 +154,7 @@ export async function addSampleData(onProgress?: (progress: number, message: str
 
     // Ran (only when went outside, more when wearing red/comfortable colors)
     const ranChance = wentOutside ? (isRedDress ? 0.5 : 0.3) : 0.05;
-    const ran = Math.random() < ranChance ? 20 + Math.random() * 40 : 0; // 0 or 20-60 minutes
+    const ran = Math.random() < ranChance ? Math.round(20 + Math.random() * 40) : 0; // 0 or 20-60 minutes
 
     // Coffee vs Tea (mutually somewhat exclusive, coffee on tired days)
     const drankCoffee = sleep < 7 ? Math.random() < 0.8 : Math.random() < 0.5;
@@ -162,7 +162,7 @@ export async function addSampleData(onProgress?: (progress: number, message: str
 
     // Romance (more on good days, weekends, after good sleep)
     const romanceChance = goodDay && isWeekend ? 0.6 : goodDay ? 0.3 : 0.1;
-    const romance = Math.random() < romanceChance ? 1 + Math.random() * 3 : 0; // 0 or 1-4 hours
+    const romance = Math.random() < romanceChance ? Math.round(1 + Math.random() * 3) : 0; // 0 or 1-4 hours
 
     // Watched movie (more on weekends, less on good productive days)
     const movieChance = isWeekend ? 0.5 : goodDay ? 0.2 : 0.4;
@@ -174,16 +174,16 @@ export async function addSampleData(onProgress?: (progress: number, message: str
 
     // Workout (different from running, more structured)
     const workoutChance = wokeUpEarly ? 0.6 : goodDay ? 0.4 : 0.2;
-    const workout = Math.random() < workoutChance ? 30 + Math.random() * 60 : 0; // 0 or 30-90 minutes
+    const workout = Math.random() < workoutChance ? Math.round(30 + Math.random() * 60) : 0; // 0 or 30-90 minutes
 
     // Insert values using database operations
-    await setEventValue(insertedEvents[0].id, date, sleep.toFixed(1));
+    await setEventValue(insertedEvents[0].id, date, sleep.toFixed(0));
     await setEventValue(insertedEvents[1].id, date, goodDay.toString());
     await setEventValue(insertedEvents[2].id, date, wentOutside.toString());
     await setEventValue(insertedEvents[3].id, date, ran.toFixed(0));
     await setEventValue(insertedEvents[4].id, date, drankCoffee.toString());
     await setEventValue(insertedEvents[5].id, date, drankTea.toString());
-    await setEventValue(insertedEvents[6].id, date, romance.toFixed(1));
+    await setEventValue(insertedEvents[6].id, date, romance.toFixed(0));
     await setEventValue(insertedEvents[7].id, date, watchedMovie.toString());
     await setEventValue(insertedEvents[8].id, date, watchedKoreanDrama.toString());
     await setEventValue(insertedEvents[9].id, date, dressColor);

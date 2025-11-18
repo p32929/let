@@ -61,9 +61,9 @@ export function EventTracker({ event, date }: EventTrackerProps) {
   };
 
   const handleNumberChange = async (newValue: string) => {
-    setValue(newValue);
-    // Only save if it's a valid number or empty
-    if (newValue === '' || !isNaN(Number(newValue))) {
+    // Only allow integers (no decimals)
+    if (newValue === '' || /^\d+$/.test(newValue)) {
+      setValue(newValue);
       await saveValue(newValue);
     }
   };
@@ -139,7 +139,7 @@ export function EventTracker({ event, date }: EventTrackerProps) {
             <Input
               value={value}
               onChangeText={handleNumberChange}
-              keyboardType="numeric"
+              keyboardType="number-pad"
               placeholder="0"
               className="text-center native:h-10 w-20 text-base font-semibold"
             />
