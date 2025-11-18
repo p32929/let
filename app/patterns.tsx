@@ -980,35 +980,14 @@ export default function DashboardScreen() {
                         {renderColoredDescription()}
                       </View>
 
-                      {/* Strength Visual Indicator */}
-                      <View className="mb-3">
-                        <View className="flex-row items-center justify-between mb-1">
-                          <Text className="text-xs font-medium" style={{ color: getStrengthColor(pattern.strength) }}>
-                            {getStrengthLabel(pattern.strength)}
+                      {/* Pattern Metadata */}
+                      <View className="pt-3 border-t border-[#e5e5e5] dark:border-[#262626]">
+                        <View className="flex-row items-center justify-between">
+                          <Text className={`text-xs font-medium ${getConfidenceColor(pattern.confidence)}`}>
+                            Happens {pattern.confidence}% of the time
                           </Text>
-                          <Text className="text-xs text-muted-foreground">
-                            Based on {pattern.sampleSize} occurrences
-                          </Text>
-                        </View>
-                        <View className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <View
-                            className="h-full rounded-full"
-                            style={{
-                              width: getStrengthWidth(pattern.strength),
-                              backgroundColor: getStrengthColor(pattern.strength)
-                            }}
-                          />
-                        </View>
-                      </View>
-
-                      {/* Confidence indicator */}
-                      <View className="flex-row items-center justify-between">
-                        <View className="flex-row items-center">
-                          <Text className="text-xs text-muted-foreground mr-2">
-                            {getConfidenceLabel(pattern.confidence)}
-                          </Text>
-                          <Text className={`text-xs font-semibold ${getConfidenceColor(pattern.confidence)}`}>
-                            {pattern.confidence}%
+                          <Text className="text-xs text-[#737373] dark:text-[#a3a3a3]">
+                            {pattern.sampleSize} samples
                           </Text>
                         </View>
                       </View>
