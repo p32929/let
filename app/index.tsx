@@ -3,7 +3,7 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Stack, router } from 'expo-router';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon } from 'lucide-react-native';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon, LayoutDashboardIcon } from 'lucide-react-native';
 import * as React from 'react';
 import { View, ScrollView, Pressable, Platform } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -429,6 +429,20 @@ export default function HomeScreen() {
               elevation: 8
             }}
           >
+            <Pressable
+              className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
+              onPress={() => {
+                setShowMenu(false);
+                if (events.length === 0) {
+                  setShowNoEventsDialog(true);
+                } else {
+                  router.push('/dashboard' as any);
+                }
+              }}
+            >
+              <Icon as={LayoutDashboardIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
+              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Dashboard</Text>
+            </Pressable>
             <Pressable
               className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
               onPress={() => {
