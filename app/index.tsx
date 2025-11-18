@@ -40,10 +40,13 @@ export default function HomeScreen() {
   const { events, loadEvents, isLoading } = useEventsStore();
   const { colorScheme, setColorScheme } = useColorScheme();
 
-  // Check if any modal/dialog is showing
+  // Check if any modal/dialog is showing (excluding menu - menu shouldn't block header buttons)
   const isAnyDialogShowing = loadingSampleData || isResetting || importingData ||
-    showMenu || showCalendar || showImportDialog || showResetDialog ||
+    showCalendar || showImportDialog || showResetDialog ||
     showNoEventsDialog || showSampleDataDialog;
+
+  // Check if any blocking dialog is showing (includes menu for other UI elements)
+  const isBlockingDialogShowing = isAnyDialogShowing || showMenu;
 
   // Memoize header right component to prevent re-creation on every render
   const headerRight = React.useCallback(() => (
@@ -288,9 +291,18 @@ export default function HomeScreen() {
     <>
       <Stack.Screen options={screenOptions} />
 
-      {/* Universal Blocking Overlay - Blocks ALL interactions when any dialog is open */}
+      {/* Universal Blocking Overlay - Blocks ALL interactions when any dialog is open (but not menu) */}
       {isAnyDialogShowing && (
         <View className="absolute inset-0 bg-black/50 z-[99]" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+      )}
+
+      {/* Menu Blocking Overlay - Only blocks content below menu, not header buttons */}
+      {showMenu && (
+        <Pressable
+          className="absolute inset-0 bg-black/30 z-[99]"
+          style={{ position: 'absolute', top: 60, left: 0, right: 0, bottom: 0 }}
+          onPress={() => setShowMenu(false)}
+        />
       )}
 
       <View className="flex-1 bg-white dark:bg-[#0a0a0a] relative">
@@ -302,14 +314,14 @@ export default function HomeScreen() {
                 variant="ghost"
                 onPress={handlePreviousWeek}
                 className="rounded-full"
-                disabled={isAnyDialogShowing}
+                disabled={isBlockingDialogShowing}
               >
                 <Icon as={ChevronLeftIcon} className="size-5" />
               </Button>
               <Pressable
                 onPress={() => setShowCalendar(true)}
                 className="flex-1 items-center"
-                disabled={isAnyDialogShowing}
+                disabled={isBlockingDialogShowing}
               >
                 <Text className="text-lg font-semibold text-[#0a0a0a] dark:text-[#fafafa]">
                   {formatDate(weekDays[0], 'MMM d')} - {formatDate(weekDays[6], 'MMM d, yyyy')}
@@ -320,7 +332,7 @@ export default function HomeScreen() {
                 variant="ghost"
                 onPress={handleNextWeek}
                 className="rounded-full"
-                disabled={isAnyDialogShowing}
+                disabled={isBlockingDialogShowing}
               >
                 <Icon as={ChevronRightIcon} className="size-5" />
               </Button>
@@ -408,13 +420,8 @@ export default function HomeScreen() {
 
         {/* Popup Menu */}
         {showMenu && (
-        <View className="absolute top-0 left-0 right-0 bottom-0 z-[100]">
-          <Pressable
-            className="absolute inset-0 bg-black/30"
-            onPress={() => setShowMenu(false)}
-          />
           <View
-            className="absolute bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg shadow-2xl overflow-hidden"
+            className="absolute bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg shadow-2xl overflow-hidden z-[100]"
             style={{
               top: 12,
               right: 16,
@@ -494,8 +501,7 @@ export default function HomeScreen() {
               <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">{colorScheme === 'dark' ? 'Light Mode' : 'Dark Mode'}</Text>
             </Pressable>
           </View>
-        </View>
-      )}
+        )}
 
       {/* No Events Dialog */}
       {showNoEventsDialog && (
