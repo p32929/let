@@ -975,25 +975,25 @@ export default function DashboardScreen() {
         </View>
 
         {/* This Month vs Last Month */}
-        <View className="mb-6">
-          <View className="flex-row items-center mb-3">
-            <Icon as={CalendarIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
-            <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
-              This Month vs Last Month
-            </Text>
-          </View>
-          <View className="gap-3">
-            {monthComparisons.map((comp, index) => (
-              <View
-                key={index}
-                className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4"
-                style={{ borderLeftWidth: 4, borderLeftColor: comp.color }}
-              >
-                <Text className="text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa] mb-2">
-                  {comp.eventName}
-                </Text>
+        {monthComparisons.filter(c => c.eventType !== 'string').length > 0 && (
+          <View className="mb-6">
+            <View className="flex-row items-center mb-3">
+              <Icon as={CalendarIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
+              <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
+                This Month vs Last Month
+              </Text>
+            </View>
+            <View className="gap-3">
+              {monthComparisons.filter(c => c.eventType !== 'string').map((comp, index) => (
+                <View
+                  key={index}
+                  className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4"
+                  style={{ borderLeftWidth: 4, borderLeftColor: comp.color }}
+                >
+                  <Text className="text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa] mb-2">
+                    {comp.eventName}
+                  </Text>
 
-                {(comp.eventType === 'boolean' || comp.eventType === 'number') && (
                   <View className="gap-2">
                     <View className="flex-row items-center justify-between">
                       <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Last Month</Text>
@@ -1036,17 +1036,11 @@ export default function DashboardScreen() {
                       </View>
                     )}
                   </View>
-                )}
-
-                {comp.eventType === 'string' && (
-                  <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">
-                    String events don't have month comparisons
-                  </Text>
-                )}
-              </View>
-            ))}
+                </View>
+              ))}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Top Correlations */}
         {topCorrelations.length > 0 && (
