@@ -1,13 +1,25 @@
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Icon } from '@/components/ui/icon';
 import { Stack, router } from 'expo-router';
 import * as React from 'react';
-import { View, ScrollView, Dimensions, Pressable, Modal, TouchableWithoutFeedback } from 'react-native';
+import { View, ScrollView, Dimensions, Pressable, Modal, TouchableWithoutFeedback, Alert } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getEventValuesForDateRangeComplete } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
 import type { Event } from '@/types/events';
+import { Copy } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 // React Native SVG - True cross-platform charting
 import Svg, { Line as SvgLine, Circle, G } from 'react-native-svg';
@@ -36,6 +48,8 @@ export default function DashboardScreen() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [isAnalyzingPatterns, setIsAnalyzingPatterns] = React.useState(false);
   const [timeRange, setTimeRange] = React.useState<TimeRange>('30d');
+  const [showCopiedDialog, setShowCopiedDialog] = React.useState(false);
+  const [showNoPatternsDialog, setShowNoPatternsDialog] = React.useState(false);
 
   // Redirect if no events
   React.useEffect(() => {
@@ -133,374 +147,295 @@ export default function DashboardScreen() {
   const discoverPatterns = (
     allData: { event: Event; dataPoints: EventDataPoint[] }[]
   ): Pattern[] => {
-    const stringEvents = allData.filter((d) => d.event.type === 'string');
-    const booleanEvents = allData.filter((d) => d.event.type === 'boolean');
-    const numberEvents = allData.filter((d) => d.event.type === 'number');
-
     if (allData.length < 2) return [];
 
-    // SMART PATTERN DISCOVERY: Group and merge similar patterns
-    // Show ALL patterns (deduplication will handle quality)
+    // Sort events by their order property to ensure consistent ordering
+    const sortedData = [...allData].sort((a, b) => a.event.order - b.event.order);
 
+    // Find the FIRST numeric event to use as the primary grouping mechanism
+    const primaryEvent = sortedData.find(d => d.event.type === 'number');
+    if (!primaryEvent) return [];
+
+    const primaryData = allData.find(d => d.event.id === primaryEvent.event.id);
+    if (!primaryData) return [];
+
+    const numericValues = primaryData.dataPoints
+      .filter(d => typeof d.value === 'number' && d.value > 0)
+      .map(d => ({ date: d.date, value: d.value as number }));
+
+    if (numericValues.length < 10) return [];
+
+    const values = numericValues.map(d => d.value);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min;
+
+    if (range < 1) return [];
+
+    // Create 3 buckets based on the FIRST event
+    const bucketSize = range / 3;
+    const buckets = [
+      { name: 'low', min, max: min + bucketSize, dates: [] as string[] },
+      { name: 'mid', min: min + bucketSize, max: min + (bucketSize * 2), dates: [] as string[] },
+      { name: 'high', min: min + (bucketSize * 2), max, dates: [] as string[] },
+    ];
+
+    for (const { date, value } of numericValues) {
+      if (value < buckets[0].max) buckets[0].dates.push(date);
+      else if (value < buckets[1].max) buckets[1].dates.push(date);
+      else buckets[2].dates.push(date);
+    }
+
+    // Store pattern data for each bucket with full details
+    interface BucketPattern {
+      bucket: string;
+      parts: Array<{
+        eventName: string;
+        eventId: number;
+        eventType: string;
+        primaryRange?: { min: number; max: number; unit: string };
+        booleanRate?: number;
+        booleanPositive?: boolean;
+        stringValue?: string;
+        stringPct?: number;
+        numberRange?: { min: number; max: number; unit: string };
+        numberAvg?: number;
+      }>;
+      relatedEvents: Event[];
+    }
+
+    const bucketPatterns: BucketPattern[] = [];
+
+    // For each bucket, build detailed pattern data
+    for (const bucket of buckets) {
+      if (bucket.dates.length < 2) continue;
+
+      const parts: BucketPattern['parts'] = [];
+      const relatedEvents: Event[] = [];
+
+      // Iterate through ALL events in their original order
+      for (const { event, dataPoints } of sortedData) {
+        const matchingData = bucket.dates
+          .map(date => dataPoints.find(d => d.date === date))
+          .filter(d => d);
+
+        if (matchingData.length === 0) continue;
+
+        if (event.type === 'boolean') {
+          const trueCount = matchingData.filter(d => d && (d.value === 'true' || d.value === 1)).length;
+          const rate = (trueCount / matchingData.length) * 100;
+
+          parts.push({
+            eventName: event.name,
+            eventId: event.id,
+            eventType: 'boolean',
+            booleanRate: rate,
+            booleanPositive: rate >= 50,
+          });
+          relatedEvents.push(event);
+        } else if (event.type === 'number') {
+          const numValues = matchingData
+            .filter(d => d && (typeof d.value === 'number' || !isNaN(parseFloat(String(d.value)))))
+            .map(d => d && typeof d.value === 'number' ? d.value : parseFloat(String(d!.value)));
+
+          if (numValues.length > 0) {
+            const avg = numValues.reduce((a, b) => a + b, 0) / numValues.length;
+            const minVal = Math.min(...numValues);
+            const maxVal = Math.max(...numValues);
+            const unit = event.unit || '';
+
+            // Store range data for the primary event
+            if (event.id === primaryEvent.event.id) {
+              parts.push({
+                eventName: event.name,
+                eventId: event.id,
+                eventType: 'number',
+                primaryRange: { min: bucket.min, max: bucket.max, unit },
+              });
+            } else {
+              parts.push({
+                eventName: event.name,
+                eventId: event.id,
+                eventType: 'number',
+                numberRange: { min: minVal, max: maxVal, unit },
+                numberAvg: avg,
+              });
+            }
+            relatedEvents.push(event);
+          }
+        } else if (event.type === 'string') {
+          const strValues = matchingData
+            .filter(d => d && d.value && String(d.value).trim())
+            .map(d => String(d!.value).trim().toLowerCase());
+
+          if (strValues.length > 0) {
+            const freq: Record<string, number> = {};
+            strValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
+            const total = strValues.length;
+
+            const topValue = Object.entries(freq)
+              .map(([value, count]) => ({ value, pct: (count / total) * 100 }))
+              .sort((a, b) => b.pct - a.pct)[0];
+
+            if (topValue) {
+              parts.push({
+                eventName: event.name,
+                eventId: event.id,
+                eventType: 'string',
+                stringValue: topValue.value,
+                stringPct: topValue.pct,
+              });
+              relatedEvents.push(event);
+            }
+          }
+        }
+      }
+
+      if (parts.length >= 1) {
+        bucketPatterns.push({
+          bucket: bucket.name,
+          parts,
+          relatedEvents,
+        });
+      }
+    }
+
+    // Now merge similar patterns with ranges
     const mergedPatterns: Pattern[] = [];
 
-    // STRATEGY 1: Group number ranges (e.g., Sleep 6-8h → ...)
-    // Find number ranges that lead to similar outcomes
-    for (const { event: numEvent, dataPoints: numData } of numberEvents) {
+    if (bucketPatterns.length === 0) return [];
 
-      const numericValues = numData
-        .filter(d => typeof d.value === 'number')
-        .map(d => ({ date: d.date, value: d.value as number }));
+    // Group patterns by their "signature" (same events in same order, same trend)
+    interface PatternGroup {
+      signature: string;
+      patterns: BucketPattern[];
+    }
 
-      if (numericValues.length < 3) continue;
+    const groups = new Map<string, PatternGroup>();
 
-      // Group dates by value ranges
-      const values = numericValues.map(d => d.value);
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      const range = max - min;
+    for (const bucketPattern of bucketPatterns) {
+      // Create signature based on event sequence and trends
+      const signature = bucketPattern.parts
+        .map(part => {
+          if (part.eventType === 'boolean') {
+            return `${part.eventName}:${part.booleanPositive ? 'yes' : 'no'}`;
+          } else if (part.eventType === 'string') {
+            return `${part.eventName}:${part.stringValue}`;
+          } else {
+            return `${part.eventName}:number`;
+          }
+        })
+        .join('→');
 
-      if (range < 1) continue; // Skip if no variation
+      if (!groups.has(signature)) {
+        groups.set(signature, { signature, patterns: [] });
+      }
+      groups.get(signature)!.patterns.push(bucketPattern);
+    }
 
-      // Create 3 buckets: low, mid, high
-      const bucketSize = range / 3;
-      const lowThreshold = min + bucketSize;
-      const highThreshold = min + (bucketSize * 2);
+    // Build merged pattern descriptions with ranges
+    for (const group of groups.values()) {
+      const mergedParts: string[] = [];
+      const allRelatedEvents = group.patterns[0].relatedEvents;
 
-      const lowDates = numericValues.filter(d => d.value < lowThreshold).map(d => d.date);
-      const midDates = numericValues.filter(d => d.value >= lowThreshold && d.value < highThreshold).map(d => d.date);
-      const highDates = numericValues.filter(d => d.value >= highThreshold).map(d => d.date);
+      // Get all parts from first pattern as template
+      const templateParts = group.patterns[0].parts;
 
-      // Analyze each range
-      for (const { rangeName, dates, rangeMin, rangeMax } of [
-        { rangeName: 'low', dates: lowDates, rangeMin: min, rangeMax: lowThreshold },
-        { rangeName: 'mid', dates: midDates, rangeMin: lowThreshold, rangeMax: highThreshold },
-        { rangeName: 'high', dates: highDates, rangeMin: highThreshold, rangeMax: max },
-      ]) {
-        if (dates.length < 2) continue;
+      for (let i = 0; i < templateParts.length; i++) {
+        const part = templateParts[i];
 
-        const outcomes: string[] = [];
-        const relatedEvents: Event[] = [numEvent];
+        if (part.eventType === 'boolean') {
+          // Collect all boolean rates from all patterns
+          const rates = group.patterns
+            .map(p => p.parts[i]?.booleanRate)
+            .filter(r => r !== undefined) as number[];
 
-        // Check correlations with STRING events - AGGREGATE ALL VALUES
-        for (const { event: strEvent, dataPoints: strData } of stringEvents) {
-          const strValues = dates
-            .map(date => strData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'string')
-            .map(d => String(d!.value).trim().toLowerCase())
-            .filter(v => v);
+          if (rates.length > 0) {
+            const minRate = Math.min(...rates);
+            const maxRate = Math.max(...rates);
 
-          if (strValues.length >= 2) {
-            // Calculate frequency distribution
-            const freq: Record<string, number> = {};
-            strValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
-            const total = strValues.length;
+            if (part.booleanPositive) {
+              if (minRate === maxRate) {
+                mergedParts.push(`${part.eventName} ${minRate.toFixed(0)}%`);
+              } else {
+                mergedParts.push(`${part.eventName} ${minRate.toFixed(0)}-${maxRate.toFixed(0)}%`);
+              }
+            } else {
+              if (minRate === maxRate) {
+                mergedParts.push(`No ${part.eventName} ${(100 - minRate).toFixed(0)}%`);
+              } else {
+                mergedParts.push(`No ${part.eventName} ${(100 - maxRate).toFixed(0)}-${(100 - minRate).toFixed(0)}%`);
+              }
+            }
+          }
+        } else if (part.eventType === 'number') {
+          if (part.primaryRange) {
+            // Primary event - show the overall range across all buckets
+            const allRanges = group.patterns
+              .map(p => p.parts[i]?.primaryRange)
+              .filter(r => r !== undefined) as Array<{ min: number; max: number; unit: string }>;
 
-            // Get top 3 values with percentages
-            const sortedValues = Object.entries(freq)
-              .map(([value, count]) => ({ value, pct: (count / total) * 100 }))
-              .filter(v => v.pct >= 15) // Only show if ≥15%
-              .sort((a, b) => b.pct - a.pct)
-              .slice(0, 3);
+            if (allRanges.length > 0) {
+              const overallMin = Math.min(...allRanges.map(r => r.min));
+              const overallMax = Math.max(...allRanges.map(r => r.max));
+              const unit = part.primaryRange.unit ? ` ${part.primaryRange.unit}` : '';
 
-            if (sortedValues.length > 0) {
-              relatedEvents.push(strEvent);
-              const valueStr = sortedValues
-                .map(v => `${v.value} (${v.pct.toFixed(0)}%)`)
-                .join(', ');
-              outcomes.push(`${strEvent.name}: ${valueStr}`);
+              if (overallMax - overallMin > 0.1) {
+                mergedParts.push(`${part.eventName} ${overallMin.toFixed(1)}-${overallMax.toFixed(1)}${unit}`);
+              } else {
+                mergedParts.push(`${part.eventName} ~${overallMin.toFixed(1)}${unit}`);
+              }
+            }
+          } else if (part.numberRange) {
+            // Secondary number events - show ranges
+            const allRanges = group.patterns
+              .map(p => p.parts[i]?.numberRange)
+              .filter(r => r !== undefined) as Array<{ min: number; max: number; unit: string }>;
+
+            if (allRanges.length > 0) {
+              const overallMin = Math.min(...allRanges.map(r => r.min));
+              const overallMax = Math.max(...allRanges.map(r => r.max));
+              const unit = part.numberRange.unit ? ` ${part.numberRange.unit}` : '';
+
+              if (overallMax - overallMin > 0.1) {
+                mergedParts.push(`${part.eventName} ${overallMin.toFixed(1)}-${overallMax.toFixed(1)}${unit}`);
+              } else {
+                const avgVal = (overallMin + overallMax) / 2;
+                mergedParts.push(`${part.eventName} ~${avgVal.toFixed(1)}${unit}`);
+              }
+            }
+          }
+        } else if (part.eventType === 'string') {
+          // String events - show value with percentage range
+          const allPcts = group.patterns
+            .map(p => p.parts[i]?.stringPct)
+            .filter(pct => pct !== undefined) as number[];
+
+          if (allPcts.length > 0 && part.stringValue) {
+            const minPct = Math.min(...allPcts);
+            const maxPct = Math.max(...allPcts);
+
+            if (minPct === maxPct) {
+              mergedParts.push(`${part.eventName}: ${part.stringValue} ${minPct.toFixed(0)}%`);
+            } else {
+              mergedParts.push(`${part.eventName}: ${part.stringValue} ${minPct.toFixed(0)}-${maxPct.toFixed(0)}%`);
             }
           }
         }
+      }
 
-        // Check correlations with BOOLEAN events
-        for (const { event: boolEvent, dataPoints: boolData } of booleanEvents) {
-          const boolValues = dates
-            .map(date => boolData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          if (boolValues.length >= 2) {
-            const trueCount = boolValues.filter(v => v > 0.5).length;
-            const rate = (trueCount / boolValues.length) * 100;
-
-            // Only include if strong correlation (>70% or <30%)
-            if (rate >= 70) {
-              relatedEvents.push(boolEvent);
-              outcomes.push(rate >= 85 ? boolEvent.name : `${boolEvent.name} (${rate.toFixed(0)}%)`);
-            } else if (rate <= 30) {
-              relatedEvents.push(boolEvent);
-              outcomes.push(rate <= 15 ? `No ${boolEvent.name}` : `No ${boolEvent.name} (${(100 - rate).toFixed(0)}%)`);
-            }
-          }
-        }
-
-        // Check correlations with other NUMBER events
-        for (const { event: otherNum, dataPoints: otherData } of numberEvents) {
-          if (otherNum.id === numEvent.id) continue;
-
-          const otherValues = dates
-            .map(date => otherData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          if (otherValues.length >= 2) {
-            const avg = otherValues.reduce((a, b) => a + b, 0) / otherValues.length;
-            const minVal = Math.min(...otherValues);
-            const maxVal = Math.max(...otherValues);
-            const otherUnit = otherNum.unit ? ` ${otherNum.unit}` : '';
-
-            if (maxVal - minVal > 0.5) {
-              relatedEvents.push(otherNum);
-              outcomes.push(`${otherNum.name} ${minVal.toFixed(1)}-${maxVal.toFixed(1)}${otherUnit}`);
-            } else if (avg > 0.1) {
-              relatedEvents.push(otherNum);
-              outcomes.push(`${otherNum.name} ${avg.toFixed(1)}${otherUnit}`);
-            }
-          }
-        }
-
-        if (outcomes.length >= 2) { // Only show if at least 2 correlations
-          const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
-          const description = `${numEvent.name} ${rangeMin.toFixed(1)}-${rangeMax.toFixed(1)}${unit} → ${outcomes.join(' → ')}`;
-          mergedPatterns.push({
-            description,
-            confidence: Math.min(95, 65 + outcomes.length * 5),
-            type: 'co-occurrence',
-            events: relatedEvents,
-          });
-        }
+      if (mergedParts.length >= 1) {
+        mergedPatterns.push({
+          description: mergedParts.join(' → '),
+          confidence: Math.min(95, 50 + mergedParts.length * 5),
+          type: 'co-occurrence',
+          events: allRelatedEvents,
+        });
       }
     }
 
-    // STRATEGY 2: Boolean-based patterns with aggregated string distributions
-    for (const { event: boolEvent, dataPoints: boolData } of booleanEvents) {
-      const trueDates = boolData
-        .filter(d => typeof d.value === 'number' && d.value > 0.5)
-        .map(d => d.date);
-
-      const falseDates = boolData
-        .filter(d => typeof d.value === 'number' && d.value <= 0.5)
-        .map(d => d.date);
-
-      // Analyze TRUE states
-      if (trueDates.length >= 2) {
-        const outcomes: string[] = [];
-        const relatedEvents: Event[] = [boolEvent];
-
-        // STRING events - show distribution
-        for (const { event: strEvent, dataPoints: strData } of stringEvents) {
-          const strValues = trueDates
-            .map(date => strData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'string')
-            .map(d => String(d!.value).trim().toLowerCase())
-            .filter(v => v);
-
-          if (strValues.length >= 2) {
-            const freq: Record<string, number> = {};
-            strValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
-            const total = strValues.length;
-
-            const sortedValues = Object.entries(freq)
-              .map(([value, count]) => ({ value, pct: (count / total) * 100 }))
-              .filter(v => v.pct >= 15)
-              .sort((a, b) => b.pct - a.pct)
-              .slice(0, 3);
-
-            if (sortedValues.length > 0) {
-              relatedEvents.push(strEvent);
-              const valueStr = sortedValues
-                .map(v => `${v.value} (${v.pct.toFixed(0)}%)`)
-                .join(', ');
-              outcomes.push(`${strEvent.name}: ${valueStr}`);
-            }
-          }
-        }
-
-        // NUMBER events
-        for (const { event: numEvent, dataPoints: numData } of numberEvents) {
-          const numValues = trueDates
-            .map(date => numData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          if (numValues.length >= 2) {
-            const avg = numValues.reduce((a, b) => a + b, 0) / numValues.length;
-            const minVal = Math.min(...numValues);
-            const maxVal = Math.max(...numValues);
-            const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
-
-            if (maxVal - minVal > 0.5) {
-              relatedEvents.push(numEvent);
-              outcomes.push(`${numEvent.name} ${minVal.toFixed(1)}-${maxVal.toFixed(1)}${unit}`);
-            } else if (avg > 0.1) {
-              relatedEvents.push(numEvent);
-              outcomes.push(`${numEvent.name} ${avg.toFixed(1)}${unit}`);
-            }
-          }
-        }
-
-        // BOOLEAN events
-        for (const { event: otherBool, dataPoints: otherData } of booleanEvents) {
-          if (otherBool.id === boolEvent.id) continue;
-
-          const boolValues = trueDates
-            .map(date => otherData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          if (boolValues.length >= 2) {
-            const trueCount = boolValues.filter(v => v > 0.5).length;
-            const rate = (trueCount / boolValues.length) * 100;
-
-            if (rate >= 70) {
-              relatedEvents.push(otherBool);
-              outcomes.push(rate >= 85 ? otherBool.name : `${otherBool.name} (${rate.toFixed(0)}%)`);
-            } else if (rate <= 30) {
-              relatedEvents.push(otherBool);
-              outcomes.push(rate <= 15 ? `No ${otherBool.name}` : `No ${otherBool.name} (${(100 - rate).toFixed(0)}%)`);
-            }
-          }
-        }
-
-        if (outcomes.length >= 2) {
-          const description = `${boolEvent.name} → ${outcomes.join(' → ')}`;
-          mergedPatterns.push({
-            description,
-            confidence: Math.min(95, 65 + outcomes.length * 5),
-            type: 'co-occurrence',
-            events: relatedEvents,
-          });
-        }
-      }
-
-      // Analyze FALSE states
-      if (falseDates.length >= 2) {
-        const outcomes: string[] = [];
-        const relatedEvents: Event[] = [boolEvent];
-
-        // STRING events
-        for (const { event: strEvent, dataPoints: strData } of stringEvents) {
-          const strValues = falseDates
-            .map(date => strData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'string')
-            .map(d => String(d!.value).trim().toLowerCase())
-            .filter(v => v);
-
-          if (strValues.length >= 2) {
-            const freq: Record<string, number> = {};
-            strValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
-            const total = strValues.length;
-
-            const sortedValues = Object.entries(freq)
-              .map(([value, count]) => ({ value, pct: (count / total) * 100 }))
-              .filter(v => v.pct >= 15)
-              .sort((a, b) => b.pct - a.pct)
-              .slice(0, 3);
-
-            if (sortedValues.length > 0) {
-              relatedEvents.push(strEvent);
-              const valueStr = sortedValues
-                .map(v => `${v.value} (${v.pct.toFixed(0)}%)`)
-                .join(', ');
-              outcomes.push(`${strEvent.name}: ${valueStr}`);
-            }
-          }
-        }
-
-        // NUMBER events
-        for (const { event: numEvent, dataPoints: numData } of numberEvents) {
-          const numValues = falseDates
-            .map(date => numData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          if (numValues.length >= 2) {
-            const avg = numValues.reduce((a, b) => a + b, 0) / numValues.length;
-            const minVal = Math.min(...numValues);
-            const maxVal = Math.max(...numValues);
-            const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
-
-            if (maxVal - minVal > 0.5) {
-              relatedEvents.push(numEvent);
-              outcomes.push(`${numEvent.name} ${minVal.toFixed(1)}-${maxVal.toFixed(1)}${unit}`);
-            } else if (avg > 0.1) {
-              relatedEvents.push(numEvent);
-              outcomes.push(`${numEvent.name} ${avg.toFixed(1)}${unit}`);
-            }
-          }
-        }
-
-        // BOOLEAN events
-        for (const { event: otherBool, dataPoints: otherData } of booleanEvents) {
-          if (otherBool.id === boolEvent.id) continue;
-
-          const boolValues = falseDates
-            .map(date => otherData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          if (boolValues.length >= 2) {
-            const trueCount = boolValues.filter(v => v > 0.5).length;
-            const rate = (trueCount / boolValues.length) * 100;
-
-            if (rate >= 70) {
-              relatedEvents.push(otherBool);
-              outcomes.push(rate >= 85 ? otherBool.name : `${otherBool.name} (${rate.toFixed(0)}%)`);
-            } else if (rate <= 30) {
-              relatedEvents.push(otherBool);
-              outcomes.push(rate <= 15 ? `No ${otherBool.name}` : `No ${otherBool.name} (${(100 - rate).toFixed(0)}%)`);
-            }
-          }
-        }
-
-        if (outcomes.length >= 2) {
-          const description = `NOT ${boolEvent.name} → ${outcomes.join(' → ')}`;
-          mergedPatterns.push({
-            description,
-            confidence: Math.min(95, 65 + outcomes.length * 5),
-            type: 'co-occurrence',
-            events: relatedEvents,
-          });
-        }
-      }
-    }
-
-    // DEDUPLICATION: Remove patterns that share >70% of the same events
-    const deduplicated: Pattern[] = [];
-
-    for (const pattern of mergedPatterns) {
-      let isDuplicate = false;
-
-      for (const existing of deduplicated) {
-        // Get event IDs for comparison
-        const patternEventIds = new Set(pattern.events.map(e => e.id));
-        const existingEventIds = new Set(existing.events.map(e => e.id));
-
-        // Calculate overlap
-        const intersection = new Set([...patternEventIds].filter(x => existingEventIds.has(x)));
-        const union = new Set([...patternEventIds, ...existingEventIds]);
-        const overlapRatio = intersection.size / Math.min(patternEventIds.size, existingEventIds.size);
-
-        // If >70% overlap, it's a duplicate - keep the one with higher confidence
-        if (overlapRatio > 0.7) {
-          isDuplicate = true;
-
-          // Replace existing with new if new has higher confidence
-          if (pattern.confidence > existing.confidence) {
-            const index = deduplicated.indexOf(existing);
-            deduplicated[index] = pattern;
-          }
-          break;
-        }
-      }
-
-      if (!isDuplicate) {
-        deduplicated.push(pattern);
-      }
-    }
-
-    return deduplicated.sort((a, b) => b.confidence - a.confidence);
+    // Return ALL merged patterns sorted by confidence
+    return mergedPatterns.sort((a, b) => b.confidence - a.confidence);
   };
 
   const getConfidenceColor = (confidence: number) => {
@@ -797,11 +732,30 @@ export default function DashboardScreen() {
     );
   };
 
+  const handleCopyPatterns = async () => {
+    if (patterns.length === 0) {
+      setShowNoPatternsDialog(true);
+      return;
+    }
+
+    const patternsText = patterns
+      .map((p, i) => `${i + 1}. ${p.description} (${p.confidence}% confidence)`)
+      .join('\n\n');
+
+    await Clipboard.setStringAsync(patternsText);
+    setShowCopiedDialog(true);
+  };
+
   return (
     <>
       <Stack.Screen
         options={{
           title: 'Patterns & Insights',
+          headerRight: () => (
+            <Pressable onPress={handleCopyPatterns} className="mr-2">
+              <Icon as={Copy} className="size-5 text-foreground" />
+            </Pressable>
+          ),
         }}
       />
       <ScrollView className="flex-1 bg-background p-4">
@@ -1013,6 +967,40 @@ export default function DashboardScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Copied Dialog */}
+      <AlertDialog open={showCopiedDialog} onOpenChange={setShowCopiedDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Copied!</AlertDialogTitle>
+            <AlertDialogDescription>
+              Patterns have been copied to clipboard
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onPress={() => setShowCopiedDialog(false)}>
+              <Text>OK</Text>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* No Patterns Dialog */}
+      <AlertDialog open={showNoPatternsDialog} onOpenChange={setShowNoPatternsDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>No Patterns</AlertDialogTitle>
+            <AlertDialogDescription>
+              No patterns to copy yet. Try adding more data!
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onPress={() => setShowNoPatternsDialog(false)}>
+              <Text>OK</Text>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

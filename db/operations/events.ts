@@ -122,7 +122,7 @@ export async function getEventValuesForDateRange(eventId: number, startDate: str
     .orderBy(asc(eventValues.date));
 }
 
-// Get event values for date range with missing dates filled in for boolean events
+// Get event values for date range with missing dates filled in
 export async function getEventValuesForDateRangeComplete(
   eventId: number,
   startDate: string,
@@ -131,43 +131,47 @@ export async function getEventValuesForDateRangeComplete(
 ) {
   const values = await getEventValuesForDateRange(eventId, startDate, endDate);
 
-  // For boolean events, fill in missing dates with 'false'
+  const valuesByDate = new Map(values.map((v) => [v.date, v]));
+  const completeValues = [];
+
+  // Generate all dates in range
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  let currentDate = new Date(start);
+
+  // Determine default value based on event type
+  let defaultValue: string;
   if (eventType === 'boolean') {
-    const valuesByDate = new Map(values.map((v) => [v.date, v]));
-    const completeValues = [];
-
-    // Generate all dates in range
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    let currentDate = new Date(start);
-
-    while (currentDate <= end) {
-      const dateStr = currentDate.toISOString().split('T')[0];
-      const existingValue = valuesByDate.get(dateStr);
-
-      if (existingValue) {
-        completeValues.push(existingValue);
-      } else {
-        // Create a placeholder entry for missing date with 'false' value
-        completeValues.push({
-          id: -1, // Placeholder ID
-          eventId,
-          date: dateStr,
-          value: 'false',
-          timestamp: new Date(),
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      }
-
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-
-    return completeValues;
+    defaultValue = 'false';
+  } else if (eventType === 'number') {
+    defaultValue = '0';
+  } else {
+    defaultValue = ''; // string type
   }
 
-  // For non-boolean events, return as-is
-  return values;
+  while (currentDate <= end) {
+    const dateStr = currentDate.toISOString().split('T')[0];
+    const existingValue = valuesByDate.get(dateStr);
+
+    if (existingValue) {
+      completeValues.push(existingValue);
+    } else {
+      // Create a placeholder entry for missing date with default value
+      completeValues.push({
+        id: -1, // Placeholder ID
+        eventId,
+        date: dateStr,
+        value: defaultValue,
+        timestamp: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return completeValues;
 }
 
 export async function getEventValuesForDate(date: string) {
