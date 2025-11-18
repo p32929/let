@@ -5,7 +5,7 @@ import { Stack, router } from 'expo-router';
 import * as React from 'react';
 import { View, ScrollView, Dimensions, Pressable, Modal, TouchableWithoutFeedback } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
-import { getEventValuesForDateRange } from '@/db/operations/events';
+import { getEventValuesForDateRangeComplete } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
 import type { Event } from '@/types/events';
 
@@ -63,9 +63,11 @@ export default function DashboardScreen() {
         const startStr = format(startDate, 'yyyy-MM-dd');
         const endStr = format(endDate, 'yyyy-MM-dd');
 
-        // Load all data for pattern detection
+        // Load all data for pattern detection using the complete function
         const dataPromises = events.map(async (event) => {
-          const values = await getEventValuesForDateRange(event.id, startStr, endStr);
+          // Use the new function that fills in missing dates for boolean events
+          const values = await getEventValuesForDateRangeComplete(event.id, startStr, endStr, event.type);
+
           const dataPoints: EventDataPoint[] = values.map((v) => ({
             date: v.date,
             value: event.type === 'string'
@@ -74,6 +76,7 @@ export default function DashboardScreen() {
                 ? (v.value === 'true' ? 1 : 0)
                 : parseFloat(v.value) || 0,
           }));
+
           return { event, dataPoints };
         });
 

@@ -122,6 +122,54 @@ export async function getEventValuesForDateRange(eventId: number, startDate: str
     .orderBy(asc(eventValues.date));
 }
 
+// Get event values for date range with missing dates filled in for boolean events
+export async function getEventValuesForDateRangeComplete(
+  eventId: number,
+  startDate: string,
+  endDate: string,
+  eventType: 'boolean' | 'number' | 'string'
+) {
+  const values = await getEventValuesForDateRange(eventId, startDate, endDate);
+
+  // For boolean events, fill in missing dates with 'false'
+  if (eventType === 'boolean') {
+    const valuesByDate = new Map(values.map((v) => [v.date, v]));
+    const completeValues = [];
+
+    // Generate all dates in range
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    let currentDate = new Date(start);
+
+    while (currentDate <= end) {
+      const dateStr = currentDate.toISOString().split('T')[0];
+      const existingValue = valuesByDate.get(dateStr);
+
+      if (existingValue) {
+        completeValues.push(existingValue);
+      } else {
+        // Create a placeholder entry for missing date with 'false' value
+        completeValues.push({
+          id: -1, // Placeholder ID
+          eventId,
+          date: dateStr,
+          value: 'false',
+          timestamp: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return completeValues;
+  }
+
+  // For non-boolean events, return as-is
+  return values;
+}
+
 export async function getEventValuesForDate(date: string) {
   // If empty string, return all values
   if (date === '') {

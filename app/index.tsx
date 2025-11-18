@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Stack, router } from 'expo-router';
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon } from 'lucide-react-native';
 import * as React from 'react';
@@ -29,6 +30,8 @@ export default function HomeScreen() {
   const [showImportDialog, setShowImportDialog] = React.useState(false);
   const [showResetDialog, setShowResetDialog] = React.useState(false);
   const [showNoEventsDialog, setShowNoEventsDialog] = React.useState(false);
+  const [showSampleDataDialog, setShowSampleDataDialog] = React.useState(false);
+  const [isResetting, setIsResetting] = React.useState(false);
   const [importingData, setImportingData] = React.useState(false);
   const [importProgress, setImportProgress] = React.useState(0);
   const [importMessage, setImportMessage] = React.useState('');
@@ -133,9 +136,9 @@ export default function HomeScreen() {
     setSelectedDate(date);
   };
 
-  const handleLoadSampleData = async () => {
+  const handleLoadSampleDataConfirm = async () => {
     try {
-      setShowMenu(false);
+      setShowSampleDataDialog(false);
       setLoadingSampleData(true);
       setLoadingProgress(0);
       setLoadingMessage('Starting...');
@@ -160,6 +163,7 @@ export default function HomeScreen() {
   const handleResetAllData = async () => {
     try {
       setShowResetDialog(false);
+      setIsResetting(true);
       const { getEvents: dbGetEvents, deleteEvent } = await import('@/db/operations/events');
       const existingEvents = await dbGetEvents();
       for (const event of existingEvents) {
@@ -168,6 +172,8 @@ export default function HomeScreen() {
       await loadEvents();
     } catch (error) {
       console.error('Failed to reset data:', error);
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -352,9 +358,21 @@ export default function HomeScreen() {
             nestedScrollEnabled={true}
             contentContainerStyle={{ paddingBottom: 24 }}
           >
-            {isLoading ? (
-              <View className="items-center justify-center py-8">
-                <Text className="text-[#737373] dark:text-[#a3a3a3]">Loading events...</Text>
+            {isLoading || isResetting ? (
+              <View className="gap-3">
+                {/* Show 3 skeleton loaders */}
+                {[1, 2, 3].map((i) => (
+                  <View key={i} className="bg-card border border-border rounded-lg p-4">
+                    <View className="flex-row items-center gap-3 mb-3">
+                      <Skeleton className="w-1 h-16 rounded" />
+                      <View className="flex-1 gap-2">
+                        <Skeleton className="h-5 w-32 rounded" />
+                        <Skeleton className="h-4 w-20 rounded" />
+                      </View>
+                    </View>
+                    <Skeleton className="h-10 w-full rounded" />
+                  </View>
+                ))}
               </View>
             ) : events.length === 0 ? (
               <View className="items-center justify-center py-12">
@@ -433,7 +451,10 @@ export default function HomeScreen() {
             </Pressable>
             <Pressable
               className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
-              onPress={handleLoadSampleData}
+              onPress={() => {
+                setShowMenu(false);
+                setShowSampleDataDialog(true);
+              }}
             >
               <Icon as={DatabaseIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
               <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Load Sample Data</Text>
@@ -485,6 +506,33 @@ export default function HomeScreen() {
                 className="flex-1"
               >
                 <Text>Add Event</Text>
+              </Button>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Sample Data Confirmation Dialog */}
+      {showSampleDataDialog && (
+        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-50">
+          <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
+            <Text className="text-xl font-bold mb-2 text-[#0a0a0a] dark:text-[#fafafa]">Load Sample Data?</Text>
+            <Text className="text-[#737373] dark:text-[#a3a3a3] mb-4">
+              This will add 10 sample events with tracking data for the past year (7,300 data points). This may take a minute to complete.
+            </Text>
+            <View className="flex-row gap-3">
+              <Button
+                variant="outline"
+                onPress={() => setShowSampleDataDialog(false)}
+                className="flex-1"
+              >
+                <Text>Cancel</Text>
+              </Button>
+              <Button
+                onPress={handleLoadSampleDataConfirm}
+                className="flex-1"
+              >
+                <Text>Load Sample</Text>
               </Button>
             </View>
           </View>
