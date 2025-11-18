@@ -592,14 +592,65 @@ export default function DashboardScreen() {
       }
       setHeatmapData(heatmap);
 
-      // Calculate average consistency from summaryStats
-      const avgConsistency = summaryStats.length > 0
-        ? summaryStats.reduce((sum, s) => sum + (s.consistency || 0), 0) / summaryStats.length
-        : 0;
+      // Calculate stats for milestones directly from event data
+      let maxStreak = 0;
+      let totalEventCount = 0;
+      let avgConsistency = 0;
 
-      // Calculate stats for milestones
-      const maxStreak = Math.max(...summaryStats.map(s => s.bestStreak || 0));
-      const totalEventCount = summaryStats.reduce((sum, s) => sum + (s.total || 0), 0);
+      // Calculate these stats for each event over the last 30 days
+      const milestoneDays = 30;
+      for (const event of events) {
+        const eventData = await getEventValuesForDateRangeComplete(
+          event.id,
+          format(subDays(today, milestoneDays - 1), 'yyyy-MM-dd'),
+          format(today, 'yyyy-MM-dd'),
+          event.type
+        );
+
+        // Calculate streak for this event
+        let currentStreak = 0;
+        for (let i = 0; i < milestoneDays; i++) {
+          const dateStr = format(subDays(today, i), 'yyyy-MM-dd');
+          const dayValue = eventData.find(d => d.date === dateStr);
+
+          let hasValue = false;
+          if (dayValue) {
+            if (event.type === 'boolean') {
+              hasValue = dayValue.value === 'true' || dayValue.value === '1';
+            } else if (event.type === 'number') {
+              const val = parseFloat(dayValue.value as string);
+              hasValue = !isNaN(val) && val > 0;
+            } else {
+              hasValue = Boolean(dayValue.value && String(dayValue.value).trim() !== '');
+            }
+          }
+
+          if (hasValue) {
+            if (i === 0 || currentStreak > 0) {
+              currentStreak++;
+            }
+          } else {
+            if (i === 0) break;
+            if (currentStreak > 0) break;
+          }
+        }
+        maxStreak = Math.max(maxStreak, currentStreak);
+
+        // Count total events
+        if (event.type === 'number') {
+          totalEventCount += eventData
+            .map(d => parseFloat(d.value as string))
+            .filter(v => !isNaN(v) && v > 0)
+            .reduce((sum, v) => sum + v, 0);
+        } else if (event.type === 'boolean') {
+          totalEventCount += eventData.filter(d => d.value === 'true' || d.value === '1').length;
+        }
+
+        // Calculate consistency (% of days with data)
+        avgConsistency += (eventData.length / milestoneDays) * 100;
+      }
+
+      avgConsistency = events.length > 0 ? avgConsistency / events.length : 0;
 
       // Generate ALL milestones (both achieved and unachieved)
       const generatedMilestones: Milestone[] = [
