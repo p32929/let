@@ -11,8 +11,18 @@ import {
   Share2Icon,
 } from 'lucide-react-native';
 import * as React from 'react';
-import { View, ScrollView, Pressable, Alert } from 'react-native';
+import { View, ScrollView, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   getErrorReports,
   clearErrorReports,
@@ -27,6 +37,11 @@ export default function CrashReportsScreen() {
   const [reports, setReports] = React.useState<ErrorReport[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
+  const [showClearAllDialog, setShowClearAllDialog] = React.useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
+  const [reportToDelete, setReportToDelete] = React.useState<string | null>(null);
+  const [showCopiedDialog, setShowCopiedDialog] = React.useState(false);
+  const [showShareErrorDialog, setShowShareErrorDialog] = React.useState(false);
   const insets = useSafeAreaInsets();
 
   const loadReports = React.useCallback(async () => {
@@ -46,41 +61,33 @@ export default function CrashReportsScreen() {
   }, [loadReports]);
 
   const handleClearAll = () => {
-    Alert.alert(
-      'Clear All Reports',
-      'Are you sure you want to clear all crash reports? This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear All',
-          style: 'destructive',
-          onPress: async () => {
-            await clearErrorReports();
-            setReports([]);
-          },
-        },
-      ]
-    );
+    setShowClearAllDialog(true);
+  };
+
+  const confirmClearAll = async () => {
+    await clearErrorReports();
+    setReports([]);
+    setShowClearAllDialog(false);
   };
 
   const handleDeleteReport = (id: string) => {
-    Alert.alert('Delete Report', 'Are you sure you want to delete this report?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteErrorReport(id);
-          await loadReports();
-        },
-      },
-    ]);
+    setReportToDelete(id);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDeleteReport = async () => {
+    if (reportToDelete) {
+      await deleteErrorReport(reportToDelete);
+      await loadReports();
+      setReportToDelete(null);
+    }
+    setShowDeleteDialog(false);
   };
 
   const handleCopyReport = async (report: ErrorReport) => {
     const reportText = JSON.stringify(report, null, 2);
     await Clipboard.setStringAsync(reportText);
-    Alert.alert('Copied', 'Error report copied to clipboard');
+    setShowCopiedDialog(true);
   };
 
   const handleShareReports = async () => {
@@ -90,7 +97,7 @@ export default function CrashReportsScreen() {
       // For web, copy to clipboard
       if (typeof navigator !== 'undefined' && navigator.clipboard) {
         await navigator.clipboard.writeText(reportsJson);
-        Alert.alert('Copied', 'All error reports copied to clipboard');
+        setShowCopiedDialog(true);
         return;
       }
 
@@ -111,11 +118,11 @@ export default function CrashReportsScreen() {
       } else {
         // Fallback to clipboard
         await Clipboard.setStringAsync(reportsJson);
-        Alert.alert('Copied', 'All error reports copied to clipboard');
+        setShowCopiedDialog(true);
       }
     } catch (error) {
       console.error('Failed to share reports:', error);
-      Alert.alert('Error', 'Failed to share error reports');
+      setShowShareErrorDialog(true);
     }
   };
 
@@ -280,6 +287,80 @@ export default function CrashReportsScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Clear All Confirmation Dialog */}
+      <AlertDialog open={showClearAllDialog} onOpenChange={setShowClearAllDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear All Reports</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to clear all crash reports? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onPress={() => setShowClearAllDialog(false)}>
+              <Text>Cancel</Text>
+            </AlertDialogCancel>
+            <AlertDialogAction onPress={confirmClearAll}>
+              <Text>Clear All</Text>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Report Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Report</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this report?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onPress={() => setShowDeleteDialog(false)}>
+              <Text>Cancel</Text>
+            </AlertDialogCancel>
+            <AlertDialogAction onPress={confirmDeleteReport}>
+              <Text>Delete</Text>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Copied Notification Dialog */}
+      <AlertDialog open={showCopiedDialog} onOpenChange={setShowCopiedDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Copied</AlertDialogTitle>
+            <AlertDialogDescription>
+              Error report copied to clipboard
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onPress={() => setShowCopiedDialog(false)}>
+              <Text>OK</Text>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Share Error Dialog */}
+      <AlertDialog open={showShareErrorDialog} onOpenChange={setShowShareErrorDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Error</AlertDialogTitle>
+            <AlertDialogDescription>
+              Failed to share error reports
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onPress={() => setShowShareErrorDialog(false)}>
+              <Text>OK</Text>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </View>
   );
 }

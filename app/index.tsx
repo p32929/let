@@ -20,7 +20,16 @@ import { exportData, importData, downloadExportFile, readImportFile } from '@/li
 import { getEvents as dbGetEvents, deleteEvent } from '@/db/operations/events';
 import { Calendar } from '@/components/ui/calendar';
 import { logError } from '@/lib/error-tracker';
-import { Alert } from 'react-native';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function HomeScreen() {
   const [currentWeekDate, setCurrentWeekDate] = React.useState(new Date());
@@ -34,6 +43,9 @@ export default function HomeScreen() {
   const [showResetDialog, setShowResetDialog] = React.useState(false);
   const [showNoEventsDialog, setShowNoEventsDialog] = React.useState(false);
   const [showSampleDataDialog, setShowSampleDataDialog] = React.useState(false);
+  const [showExportSuccessDialog, setShowExportSuccessDialog] = React.useState(false);
+  const [showExportErrorDialog, setShowExportErrorDialog] = React.useState(false);
+  const [showImportErrorDialog, setShowImportErrorDialog] = React.useState(false);
   const [isResetting, setIsResetting] = React.useState(false);
   const [importingData, setImportingData] = React.useState(false);
   const [importProgress, setImportProgress] = React.useState(0);
@@ -47,7 +59,8 @@ export default function HomeScreen() {
   // Check if any modal/dialog is showing (excluding menu - menu shouldn't block header buttons)
   const isAnyDialogShowing = loadingSampleData || isResetting || importingData ||
     showCalendar || showImportDialog || showResetDialog ||
-    showNoEventsDialog || showSampleDataDialog;
+    showNoEventsDialog || showSampleDataDialog || showExportSuccessDialog ||
+    showExportErrorDialog || showImportErrorDialog;
 
   // Check if any blocking dialog is showing (includes menu for other UI elements)
   const isBlockingDialogShowing = isAnyDialogShowing || showMenu;
@@ -202,7 +215,7 @@ export default function HomeScreen() {
       await downloadExportFile(data);
 
       // Show success message
-      Alert.alert('Export Successful', 'Your data has been exported successfully!');
+      setShowExportSuccessDialog(true);
     } catch (error) {
       // Log error for debugging
       await logError(error, {
@@ -215,18 +228,7 @@ export default function HomeScreen() {
       });
 
       // Show user-friendly error message
-      Alert.alert(
-        'Export Failed',
-        'Failed to export data. The error has been logged. You can view crash reports from the menu.',
-        [
-          { text: 'OK', style: 'default' },
-          {
-            text: 'View Reports',
-            style: 'default',
-            onPress: () => router.push('/crash-reports'),
-          },
-        ]
-      );
+      setShowExportErrorDialog(true);
     }
   };
 
@@ -274,21 +276,7 @@ export default function HomeScreen() {
       setImportMessage('Failed to import data. Error logged.');
 
       // Show detailed error alert
-      Alert.alert(
-        'Import Failed',
-        'Failed to import data. The error has been logged. You can view crash reports from the menu.',
-        [
-          { text: 'OK', style: 'default' },
-          {
-            text: 'View Reports',
-            style: 'default',
-            onPress: () => {
-              setShowImportDialog(false);
-              router.push('/crash-reports');
-            },
-          },
-        ]
-      );
+      setShowImportErrorDialog(true);
     } finally {
       setImportingData(false);
       setImportProgress(0);
@@ -798,6 +786,74 @@ export default function HomeScreen() {
           </View>
         </View>
       )}
+
+      {/* Export Success Dialog */}
+      <AlertDialog open={showExportSuccessDialog} onOpenChange={setShowExportSuccessDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Export Successful</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your data has been exported successfully!
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onPress={() => setShowExportSuccessDialog(false)}>
+              <Text>OK</Text>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Export Error Dialog */}
+      <AlertDialog open={showExportErrorDialog} onOpenChange={setShowExportErrorDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Export Failed</AlertDialogTitle>
+            <AlertDialogDescription>
+              Failed to export data. The error has been logged. You can view crash reports from the menu.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onPress={() => setShowExportErrorDialog(false)}>
+              <Text>OK</Text>
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onPress={() => {
+                setShowExportErrorDialog(false);
+                router.push('/crash-reports');
+              }}
+            >
+              <Text>View Reports</Text>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Import Error Dialog */}
+      <AlertDialog open={showImportErrorDialog} onOpenChange={setShowImportErrorDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Import Failed</AlertDialogTitle>
+            <AlertDialogDescription>
+              Failed to import data. The error has been logged. You can view crash reports from the menu.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onPress={() => setShowImportErrorDialog(false)}>
+              <Text>OK</Text>
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onPress={() => {
+                setShowImportErrorDialog(false);
+                setShowImportDialog(false);
+                router.push('/crash-reports');
+              }}
+            >
+              <Text>View Reports</Text>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       </View>
     </>
   );
