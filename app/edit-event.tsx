@@ -10,6 +10,7 @@ import { updateEvent, deleteEvent } from '@/db/operations/events';
 import { useEventsStore } from '@/lib/stores/events-store';
 import type { EventType } from '@/types/events';
 import { CheckIcon, HashIcon, TypeIcon } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -72,6 +73,7 @@ export default function EditEventScreen() {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
+  const insets = useSafeAreaInsets();
 
   React.useEffect(() => {
     if (event) {
@@ -135,7 +137,10 @@ export default function EditEventScreen() {
   return (
     <>
       <Stack.Screen options={SCREEN_OPTIONS} />
-      <ScrollView className="flex-1 bg-background">
+      <ScrollView
+        className="flex-1 bg-background"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+      >
         <View className="p-6 gap-6">
           {/* Header */}
           <View className="gap-1">

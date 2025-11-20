@@ -6,6 +6,7 @@ import { Stack, router } from 'expo-router';
 import * as React from 'react';
 import { View, ScrollView, Dimensions, Pressable, Modal, TouchableWithoutFeedback } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getEventValuesForDateRangeComplete } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
 import type { Event } from '@/types/events';
@@ -54,6 +55,7 @@ export default function DashboardScreen() {
   const [timeRange, setTimeRange] = React.useState<TimeRange>('30d');
   const [showCopiedDialog, setShowCopiedDialog] = React.useState(false);
   const [showNoPatternsDialog, setShowNoPatternsDialog] = React.useState(false);
+  const insets = useSafeAreaInsets();
 
   // Redirect if no events
   React.useEffect(() => {
@@ -801,7 +803,10 @@ export default function DashboardScreen() {
           ),
         }}
       />
-      <ScrollView className="flex-1 bg-background p-4">
+      <ScrollView
+        className="flex-1 bg-background p-4"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+      >
         {isLoading ? (
           <View className="py-4">
             {/* Loading skeletons for dashboard */}

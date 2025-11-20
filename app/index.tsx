@@ -9,6 +9,7 @@ import { View, ScrollView, Pressable, Platform } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
 import { useColorScheme } from 'nativewind';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getWeekDays, formatDate, isToday, getNextWeek, getPreviousWeek, getDayName } from '@/lib/date-utils';
 import { migrateDatabase } from '@/db/migrate';
@@ -41,6 +42,7 @@ export default function HomeScreen() {
   const [weekEventCompletion, setWeekEventCompletion] = React.useState<Record<string, { total: number; completed: number }>>({});
   const { events, loadEvents, isLoading } = useEventsStore();
   const { colorScheme, setColorScheme } = useColorScheme();
+  const insets = useSafeAreaInsets();
 
   // Check if any modal/dialog is showing (excluding menu - menu shouldn't block header buttons)
   const isAnyDialogShowing = loadingSampleData || isResetting || importingData ||
@@ -419,11 +421,11 @@ export default function HomeScreen() {
         {/* Events List */}
         <ScrollView
             className="flex-1 p-4"
+            contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
             showsVerticalScrollIndicator={false}
             showsHorizontalScrollIndicator={false}
             scrollEnabled={true}
             nestedScrollEnabled={true}
-            contentContainerStyle={{ paddingBottom: 24 }}
           >
             {isLoading || isResetting ? (
               <View className="gap-3">
@@ -508,7 +510,7 @@ export default function HomeScreen() {
               }}
             >
               <Icon as={ArrowUpDownIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
-              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Reorder Events</Text>
+              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Organize Events</Text>
             </Pressable>
             <Pressable
               className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"

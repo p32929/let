@@ -12,6 +12,7 @@ import {
 } from 'lucide-react-native';
 import * as React from 'react';
 import { View, ScrollView, Pressable, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getErrorReports,
   clearErrorReports,
@@ -26,6 +27,7 @@ export default function CrashReportsScreen() {
   const [reports, setReports] = React.useState<ErrorReport[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
+  const insets = useSafeAreaInsets();
 
   const loadReports = React.useCallback(async () => {
     try {
@@ -164,7 +166,10 @@ export default function CrashReportsScreen() {
         }}
       />
 
-      <ScrollView className="flex-1 px-4 pt-4">
+      <ScrollView
+        className="flex-1 px-4 pt-4"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+      >
         {loading ? (
           <View className="items-center justify-center py-20">
             <Text className="text-muted-foreground">Loading...</Text>

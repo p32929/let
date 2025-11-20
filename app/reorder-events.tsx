@@ -2,12 +2,18 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { Stack, router } from 'expo-router';
 import * as React from 'react';
-import { View, ScrollView, Pressable } from 'react-native';
+import { View, Pressable } from 'react-native';
 import { Icon } from '@/components/ui/icon';
 import { GripVerticalIcon } from 'lucide-react-native';
 import { reorderEvents } from '@/db/operations/events';
 import { useEventsStore } from '@/lib/stores/events-store';
 import type { Event } from '@/types/events';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import DraggableFlatList, {
+  ScaleDecorator,
+  RenderItemParams,
+} from 'react-native-draggable-flatlist';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 const SCREEN_OPTIONS = {
   title: 'Reorder Events',
@@ -18,6 +24,7 @@ export default function ReorderEventsScreen() {
   const { events: storeEvents, refreshEvents } = useEventsStore();
   const [events, setEvents] = React.useState<Event[]>([]);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const insets = useSafeAreaInsets();
 
   // Redirect if no events
   React.useEffect(() => {
@@ -30,19 +37,30 @@ export default function ReorderEventsScreen() {
     setEvents([...storeEvents].sort((a, b) => a.order - b.order));
   }, [storeEvents]);
 
-  const moveEventUp = (index: number) => {
-    if (index === 0) return;
-    const newEvents = [...events];
-    [newEvents[index - 1], newEvents[index]] = [newEvents[index], newEvents[index - 1]];
-    setEvents(newEvents);
-  };
-
-  const moveEventDown = (index: number) => {
-    if (index === events.length - 1) return;
-    const newEvents = [...events];
-    [newEvents[index], newEvents[index + 1]] = [newEvents[index + 1], newEvents[index]];
-    setEvents(newEvents);
-  };
+  const renderItem = ({ item: event, drag, isActive }: RenderItemParams<Event>) => (
+    <ScaleDecorator>
+      <View
+        className={`bg-card border border-border rounded-lg p-4 flex-row items-center gap-3 mb-2 ${
+          isActive ? 'opacity-70' : ''
+        }`}
+        style={{ borderLeftWidth: 4, borderLeftColor: event.color }}
+      >
+        <Pressable onLongPress={drag} disabled={isActive}>
+          <Icon as={GripVerticalIcon} className="size-5 text-muted-foreground" />
+        </Pressable>
+        <View className="flex-1">
+          <Text className="font-semibold">{event.name}</Text>
+          <Text className="text-sm text-muted-foreground">
+            {event.type === 'boolean'
+              ? 'Yes/No'
+              : event.type === 'number'
+                ? `Number${event.unit ? ` (${event.unit})` : ''}`
+                : 'Text'}
+          </Text>
+        </View>
+      </View>
+    </ScaleDecorator>
+  );
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
@@ -61,73 +79,41 @@ export default function ReorderEventsScreen() {
   return (
     <>
       <Stack.Screen options={SCREEN_OPTIONS} />
-      <View className="flex-1 bg-background">
-        <ScrollView className="flex-1 p-4">
-          <Text className="text-muted-foreground mb-4">
-            Use the arrow buttons to change the order of your events
-          </Text>
-          <View className="gap-2">
-            {events.map((event, index) => (
-              <View
-                key={event.id}
-                className="bg-card border border-border rounded-lg p-4 flex-row items-center gap-3"
-                style={{ borderLeftWidth: 4, borderLeftColor: event.color }}
-              >
-                <Icon as={GripVerticalIcon} className="size-5 text-muted-foreground" />
-                <View className="flex-1">
-                  <Text className="font-semibold">{event.name}</Text>
-                  <Text className="text-sm text-muted-foreground">
-                    {event.type === 'boolean'
-                      ? 'Yes/No'
-                      : event.type === 'number'
-                        ? `Number${event.unit ? ` (${event.unit})` : ''}`
-                        : 'Text'}
-                  </Text>
-                </View>
-                <View className="flex-row gap-1">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onPress={() => moveEventUp(index)}
-                    disabled={index === 0 || isSubmitting}
-                  >
-                    <Text>↑</Text>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onPress={() => moveEventDown(index)}
-                    disabled={index === events.length - 1 || isSubmitting}
-                  >
-                    <Text>↓</Text>
-                  </Button>
-                </View>
-              </View>
-            ))}
+      <GestureHandlerRootView className="flex-1 bg-background">
+        <View className="flex-1">
+          <View className="p-4 pb-2">
+            <Text className="text-muted-foreground">
+              Press and hold the grip icon to drag and reorder your events
+            </Text>
           </View>
-        </ScrollView>
 
-        {/* Footer Buttons */}
-        <View className="border-t border-border p-4 gap-3">
-          <View className="flex-row gap-3">
-            <Button
-              variant="outline"
-              onPress={() => router.back()}
-              disabled={isSubmitting}
-              className="flex-1"
-            >
-              <Text>Cancel</Text>
-            </Button>
-            <Button
-              onPress={handleSubmit}
-              disabled={isSubmitting}
-              className="flex-1"
-            >
-              <Text>{isSubmitting ? 'Saving...' : 'Save Order'}</Text>
-            </Button>
+          <DraggableFlatList
+            data={events}
+            renderItem={renderItem}
+            keyExtractor={(item) => item.id.toString()}
+            onDragEnd={({ data }) => setEvents(data)}
+            containerStyle={{ flex: 1 }}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 100 }}
+          />
+
+          {/* Footer Buttons */}
+          <View className="border-t border-border p-4 gap-3">
+            <View className="flex-row gap-3">
+              <Button
+                variant="outline"
+                onPress={() => router.back()}
+                disabled={isSubmitting}
+                className="flex-1"
+              >
+                <Text>Cancel</Text>
+              </Button>
+              <Button onPress={handleSubmit} disabled={isSubmitting} className="flex-1">
+                <Text>{isSubmitting ? 'Saving...' : 'Save Order'}</Text>
+              </Button>
+            </View>
           </View>
         </View>
-      </View>
+      </GestureHandlerRootView>
     </>
   );
 }

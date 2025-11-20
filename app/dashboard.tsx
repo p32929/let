@@ -6,6 +6,7 @@ import { Stack, router } from 'expo-router';
 import * as React from 'react';
 import { View, ScrollView, Dimensions, Pressable } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getEventValuesForDateRangeComplete, getAllEventValues } from '@/db/operations/events';
 import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, differenceInDays, getDay, subMonths, addDays, isSameMonth, getDaysInMonth } from 'date-fns';
 import type { Event } from '@/types/events';
@@ -177,6 +178,7 @@ export default function DashboardScreen() {
   const [summaryView, setSummaryView] = React.useState<'7days' | '15days' | '1month' | '6months'>('7days');
   const [milestones, setMilestones] = React.useState<Milestone[]>([]);
   const [showAllMilestones, setShowAllMilestones] = React.useState(false);
+  const insets = useSafeAreaInsets();
   const [recommendations, setRecommendations] = React.useState<RecommendedAction[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSummaryLoading, setIsSummaryLoading] = React.useState(false);
@@ -1006,7 +1008,10 @@ export default function DashboardScreen() {
             title: 'Dashboard',
           }}
         />
-        <ScrollView className="flex-1 p-4">
+        <ScrollView
+          className="flex-1 p-4"
+          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        >
           <View className="gap-4">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
               <Skeleton key={i} className="h-32 w-full rounded-lg" />
@@ -1045,7 +1050,10 @@ export default function DashboardScreen() {
           title: 'Dashboard',
         }}
       />
-      <ScrollView className="flex-1 p-4">
+      <ScrollView
+        className="flex-1 p-4"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+      >
         {/* Milestones */}
         <View className="mb-6">
           <View className="flex-row items-center justify-between mb-3">
