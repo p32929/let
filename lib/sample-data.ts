@@ -100,24 +100,17 @@ export async function addSampleData(onProgress?: (progress: number, message: str
   const today = new Date();
   let dataPointCount = 0;
   const totalDays = 730;
-  const batchSize = 50; // Process 50 days at a time for better UX
+  const batchSize = 10; // Process 10 days at a time to prevent database locks
 
   // Dress colors and wake up times
   const dressColors = ['red', 'blue', 'black', 'white', 'green', 'pink', 'purple', 'yellow'];
   const wakeUpTimes = ['6am', '7am', '8am', '9am', '10am'];
 
+  // Batch all value insertions
+  const valuesToInsert: Array<{ eventId: number; date: string; value: string }> = [];
+
   for (let i = 0; i < totalDays; i++) {
     const date = format(subDays(today, i), 'yyyy-MM-dd');
-
-    // Update progress every batch
-    if (i % batchSize === 0) {
-      const progress = 10 + Math.floor((i / totalDays) * 80);
-      const daysProcessed = i;
-      const message = `Generating data: ${daysProcessed}/${totalDays} days...`;
-      if (onProgress) onProgress(progress, message);
-      // Allow UI to update
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
 
     // Add some patterns and correlations
     const isWeekend = i % 7 < 2; // Roughly weekend pattern
@@ -176,21 +169,38 @@ export async function addSampleData(onProgress?: (progress: number, message: str
     const workoutChance = wokeUpEarly ? 0.6 : goodDay ? 0.4 : 0.2;
     const workout = Math.random() < workoutChance ? Math.round(30 + Math.random() * 60) : 0; // 0 or 30-90 minutes
 
-    // Insert values using database operations
-    await setEventValue(insertedEvents[0].id, date, sleep.toFixed(0));
-    await setEventValue(insertedEvents[1].id, date, goodDay.toString());
-    await setEventValue(insertedEvents[2].id, date, wentOutside.toString());
-    await setEventValue(insertedEvents[3].id, date, ran.toFixed(0));
-    await setEventValue(insertedEvents[4].id, date, drankCoffee.toString());
-    await setEventValue(insertedEvents[5].id, date, drankTea.toString());
-    await setEventValue(insertedEvents[6].id, date, romance.toFixed(0));
-    await setEventValue(insertedEvents[7].id, date, watchedMovie.toString());
-    await setEventValue(insertedEvents[8].id, date, watchedKoreanDrama.toString());
-    await setEventValue(insertedEvents[9].id, date, dressColor);
-    await setEventValue(insertedEvents[10].id, date, wakeUpTime);
-    await setEventValue(insertedEvents[11].id, date, workout.toFixed(0));
+    // Add values to batch array
+    valuesToInsert.push(
+      { eventId: insertedEvents[0].id, date, value: sleep.toFixed(0) },
+      { eventId: insertedEvents[1].id, date, value: goodDay.toString() },
+      { eventId: insertedEvents[2].id, date, value: wentOutside.toString() },
+      { eventId: insertedEvents[3].id, date, value: ran.toFixed(0) },
+      { eventId: insertedEvents[4].id, date, value: drankCoffee.toString() },
+      { eventId: insertedEvents[5].id, date, value: drankTea.toString() },
+      { eventId: insertedEvents[6].id, date, value: romance.toFixed(0) },
+      { eventId: insertedEvents[7].id, date, value: watchedMovie.toString() },
+      { eventId: insertedEvents[8].id, date, value: watchedKoreanDrama.toString() },
+      { eventId: insertedEvents[9].id, date, value: dressColor },
+      { eventId: insertedEvents[10].id, date, value: wakeUpTime },
+      { eventId: insertedEvents[11].id, date, value: workout.toFixed(0) }
+    );
 
     dataPointCount += 12;
+
+    // Insert batch when we reach batchSize days or at the end
+    if ((i + 1) % batchSize === 0 || i === totalDays - 1) {
+      for (const item of valuesToInsert) {
+        await setEventValue(item.eventId, item.date, item.value);
+      }
+
+      const progress = 10 + Math.floor(((i + 1) / totalDays) * 90);
+      if (onProgress) {
+        onProgress(progress, `Loading data: ${i + 1}/${totalDays} days`);
+      }
+
+      // Clear batch array
+      valuesToInsert.length = 0;
+    }
   }
 
   console.log(`Added ${dataPointCount} data points`);
