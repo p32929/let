@@ -592,26 +592,35 @@ export default function DashboardScreen() {
       }
       setHeatmapData(heatmap);
 
-      // Calculate stats for milestones directly from event data
+      // Calculate stats for milestones - FIXED ALGORITHM
       let maxStreak = 0;
       let totalEventCount = 0;
       let avgConsistency = 0;
+      let trackingStreakValue = 0;
 
-      // Calculate these stats for each event over the last 30 days
-      const milestoneDays = 30;
+      // Look at last 90 days for better streak detection
+      const milestoneDays = 90;
+
+      // Track which days ALL events were completed (for tracking streak)
+      const allEventsCompletedDays = new Set<string>();
+
       for (const event of events) {
-        const eventData = await getEventValuesForDateRangeComplete(
-          event.id,
-          format(subDays(today, milestoneDays - 1), 'yyyy-MM-dd'),
-          format(today, 'yyyy-MM-dd'),
-          event.type
+        // Get ACTUAL event values (not filled with defaults)
+        const allValues = await getAllEventValues();
+        const eventValues = allValues.filter(v => v.eventId === event.id);
+
+        // Get date range to check
+        const startDate = format(subDays(today, milestoneDays - 1), 'yyyy-MM-dd');
+        const endDate = format(today, 'yyyy-MM-dd');
+        const valuesInRange = eventValues.filter(
+          v => v.date >= startDate && v.date <= endDate
         );
 
-        // Calculate streak for this event
+        // Calculate CURRENT streak (consecutive days from today backwards)
         let currentStreak = 0;
         for (let i = 0; i < milestoneDays; i++) {
           const dateStr = format(subDays(today, i), 'yyyy-MM-dd');
-          const dayValue = eventData.find(d => d.date === dateStr);
+          const dayValue = valuesInRange.find(v => v.date === dateStr);
 
           let hasValue = false;
           if (dayValue) {
@@ -626,31 +635,105 @@ export default function DashboardScreen() {
           }
 
           if (hasValue) {
-            if (i === 0 || currentStreak > 0) {
-              currentStreak++;
-            }
+            currentStreak++;
           } else {
-            if (i === 0) break;
-            if (currentStreak > 0) break;
+            // Streak broken
+            break;
           }
         }
-        maxStreak = Math.max(maxStreak, currentStreak);
 
-        // Count total events
-        if (event.type === 'number') {
-          totalEventCount += eventData
-            .map(d => parseFloat(d.value as string))
-            .filter(v => !isNaN(v) && v > 0)
-            .reduce((sum, v) => sum + v, 0);
-        } else if (event.type === 'boolean') {
-          totalEventCount += eventData.filter(d => d.value === 'true' || d.value === '1').length;
+        // Calculate MAX streak (best streak in the period)
+        let tempStreak = 0;
+        let bestStreak = currentStreak; // Current streak is a candidate
+
+        // Check all days to find best historical streak
+        for (let i = 0; i < milestoneDays; i++) {
+          const dateStr = format(subDays(today, i), 'yyyy-MM-dd');
+          const dayValue = valuesInRange.find(v => v.date === dateStr);
+
+          let hasValue = false;
+          if (dayValue) {
+            if (event.type === 'boolean') {
+              hasValue = dayValue.value === 'true' || dayValue.value === '1';
+            } else if (event.type === 'number') {
+              const val = parseFloat(dayValue.value as string);
+              hasValue = !isNaN(val) && val > 0;
+            } else {
+              hasValue = Boolean(dayValue.value && String(dayValue.value).trim() !== '');
+            }
+          }
+
+          if (hasValue) {
+            tempStreak++;
+            bestStreak = Math.max(bestStreak, tempStreak);
+
+            // Track this day as having this event completed
+            allEventsCompletedDays.add(dateStr);
+          } else {
+            tempStreak = 0;
+          }
         }
 
-        // Calculate consistency (% of days with data)
-        avgConsistency += (eventData.length / milestoneDays) * 100;
+        maxStreak = Math.max(maxStreak, bestStreak);
+
+        // Count total DAYS with events (consistent across all types)
+        totalEventCount += valuesInRange.filter(v => {
+          if (event.type === 'boolean') {
+            return v.value === 'true' || v.value === '1';
+          } else if (event.type === 'number') {
+            const val = parseFloat(v.value as string);
+            return !isNaN(val) && val > 0;
+          } else {
+            return Boolean(v.value && String(v.value).trim() !== '');
+          }
+        }).length;
+
+        // Calculate ACTUAL consistency (days with data / total days checked)
+        const daysWithData = valuesInRange.length;
+        avgConsistency += (daysWithData / milestoneDays) * 100;
       }
 
       avgConsistency = events.length > 0 ? avgConsistency / events.length : 0;
+
+      // Calculate tracking streak (days where ALL events were tracked)
+      if (events.length > 0) {
+        for (let i = 0; i < milestoneDays; i++) {
+          const dateStr = format(subDays(today, i), 'yyyy-MM-dd');
+
+          // Check if all events have values for this day
+          let allEventsTracked = true;
+          for (const event of events) {
+            const allValues = await getAllEventValues();
+            const dayValue = allValues.find(v => v.eventId === event.id && v.date === dateStr);
+
+            let hasValue = false;
+            if (dayValue) {
+              if (event.type === 'boolean') {
+                hasValue = dayValue.value === 'true' || dayValue.value === '1';
+              } else if (event.type === 'number') {
+                const val = parseFloat(dayValue.value as string);
+                hasValue = !isNaN(val) && val > 0;
+              } else {
+                hasValue = Boolean(dayValue.value && String(dayValue.value).trim() !== '');
+              }
+            }
+
+            if (!hasValue) {
+              allEventsTracked = false;
+              break;
+            }
+          }
+
+          if (allEventsTracked) {
+            trackingStreakValue++;
+          } else {
+            // Streak broken
+            break;
+          }
+        }
+      }
+
+      setTrackingStreak(trackingStreakValue);
 
       // Generate ALL milestones (both achieved and unachieved)
       const generatedMilestones: Milestone[] = [
@@ -816,39 +899,39 @@ export default function DashboardScreen() {
         // Tracking Streak Milestones
         {
           title: 'Full Day Tracker',
-          description: trackingStreak >= 1
+          description: trackingStreakValue >= 1
             ? 'Tracked everything today!'
             : 'Track all events for 1 day',
           icon: CheckCircle2Icon,
           color: '#86efac',
-          achieved: trackingStreak >= 1,
+          achieved: trackingStreakValue >= 1,
         },
         {
           title: 'Complete Tracker',
-          description: trackingStreak >= 7
-            ? `${trackingStreak} days of full tracking`
+          description: trackingStreakValue >= 7
+            ? `${trackingStreakValue} days of full tracking`
             : 'Track all events for 7 days',
           icon: CheckCircle2Icon,
           color: '#22c55e',
-          achieved: trackingStreak >= 7,
+          achieved: trackingStreakValue >= 7,
         },
         {
           title: 'Dedicated Logger',
-          description: trackingStreak >= 14
-            ? `${trackingStreak} days complete!`
+          description: trackingStreakValue >= 14
+            ? `${trackingStreakValue} days complete!`
             : 'Track all events for 14 days',
           icon: CheckCircle2Icon,
           color: '#16a34a',
-          achieved: trackingStreak >= 14,
+          achieved: trackingStreakValue >= 14,
         },
         {
           title: 'Tracking Master',
-          description: trackingStreak >= 30
-            ? `${trackingStreak} days complete!`
+          description: trackingStreakValue >= 30
+            ? `${trackingStreakValue} days complete!`
             : 'Track all events for 30 days',
           icon: CheckCircle2Icon,
           color: '#15803d',
-          achieved: trackingStreak >= 30,
+          achieved: trackingStreakValue >= 30,
         },
       ];
 
