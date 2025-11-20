@@ -5,7 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Stack, router } from 'expo-router';
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon, LayoutDashboardIcon, AlertCircleIcon } from 'lucide-react-native';
 import * as React from 'react';
-import { View, ScrollView, Pressable, Platform } from 'react-native';
+import { View, ScrollView, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
 import { useColorScheme } from 'nativewind';
@@ -38,6 +38,7 @@ export default function HomeScreen() {
   const [importingData, setImportingData] = React.useState(false);
   const [importProgress, setImportProgress] = React.useState(0);
   const [importMessage, setImportMessage] = React.useState('');
+  const [isExporting, setIsExporting] = React.useState(false);
   const [clearExisting, setClearExisting] = React.useState(false);
   const [weekEventCompletion, setWeekEventCompletion] = React.useState<Record<string, { total: number; completed: number }>>({});
   const { events, loadEvents, isLoading } = useEventsStore();
@@ -45,7 +46,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
 
   // Check if any modal/dialog is showing (excluding menu - menu shouldn't block header buttons)
-  const isAnyDialogShowing = loadingSampleData || isResetting || importingData ||
+  const isAnyDialogShowing = loadingSampleData || isResetting || importingData || isExporting ||
     showCalendar || showImportDialog || showResetDialog ||
     showNoEventsDialog || showSampleDataDialog;
 
@@ -198,12 +199,16 @@ export default function HomeScreen() {
         setShowNoEventsDialog(true);
         return;
       }
+
+      setIsExporting(true);
       const data = await exportData();
       await downloadExportFile(data);
+      setIsExporting(false);
 
       // Show success message
       Alert.alert('Export Successful', 'Your data has been exported successfully!');
     } catch (error) {
+      setIsExporting(false);
       // Log error for debugging
       await logError(error, {
         action: 'Export Data',
@@ -680,6 +685,23 @@ export default function HomeScreen() {
             {/* Additional Info */}
             <Text className="text-xs text-[#737373] dark:text-[#a3a3a3] text-center mt-4">
               This may take a minute... Generating 7,300 data points
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Export Loading Overlay */}
+      {isExporting && (
+        <View className="absolute inset-0 bg-black/70 items-center justify-center p-4 z-[100]">
+          <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
+            <Text className="text-xl font-bold mb-4 text-center text-[#0a0a0a] dark:text-[#fafafa]">Exporting Data</Text>
+
+            <View className="items-center mb-4">
+              <ActivityIndicator size="large" color={colorScheme === 'dark' ? '#fafafa' : '#0a0a0a'} />
+            </View>
+
+            <Text className="text-center text-sm text-[#737373] dark:text-[#a3a3a3]">
+              Preparing your data for export...
             </Text>
           </View>
         </View>
