@@ -10,12 +10,16 @@ import { logError } from './error-tracker';
 export interface ExportData {
   version: string;
   exportDate: string;
-  events: Event[];
+  events: Array<{
+    name: string;
+    type: 'boolean' | 'number' | 'string';
+    unit?: string | null;
+    color: string;
+  }>;
   eventValues: Array<{
-    eventId: number;
+    eventIndex: number;
     date: string;
     value: string;
-    timestamp: string;
   }>;
   settings: {
     colorScheme?: 'light' | 'dark';
@@ -28,19 +32,28 @@ export interface ExportData {
  */
 export async function exportData(): Promise<ExportData> {
   // Get all events
-  const events = await getEvents();
+  const allEvents = await getEvents();
+
+  // Map events to only include essential fields (exclude id, icon, order, createdAt, updatedAt)
+  const events = allEvents.map((e) => ({
+    name: e.name,
+    type: e.type,
+    unit: e.unit ?? null,
+    color: e.color,
+  }));
+
+  // Create a mapping from event ID to index
+  const eventIdToIndex = new Map<number, number>();
+  allEvents.forEach((e, index) => {
+    eventIdToIndex.set(e.id, index);
+  });
 
   // Get all event values (pass empty string to get all)
   const values = await getEventValuesForDate('');
   const allEventValues = values.map((v) => ({
-    eventId: v.eventId,
+    eventIndex: eventIdToIndex.get(v.eventId) ?? 0,
     date: v.date,
     value: v.value,
-    timestamp: v.timestamp instanceof Date
-      ? v.timestamp.toISOString()
-      : typeof v.timestamp === 'string'
-        ? v.timestamp
-        : new Date().toISOString(),
   }));
 
   // Get settings from storage
@@ -94,13 +107,12 @@ export async function importData(data: ExportData, options: {
 
     onProgress?.(20, 'Importing events...');
 
-    // Create a mapping from old IDs to new IDs
+    // Create a mapping from event index to new IDs
     const idMapping: Record<number, number> = {};
 
     // Import events
     for (let i = 0; i < data.events.length; i++) {
       const eventData = data.events[i];
-      const oldId = eventData.id;
 
       // Create event without ID (let DB assign new one)
       const newEvent = await createEvent({
@@ -110,7 +122,8 @@ export async function importData(data: ExportData, options: {
         color: eventData.color,
       });
 
-      idMapping[oldId] = newEvent.id;
+      // Map the event index to the new ID
+      idMapping[i] = newEvent.id;
 
       onProgress?.(
         20 + Math.floor((i / data.events.length) * 30),
@@ -120,7 +133,7 @@ export async function importData(data: ExportData, options: {
 
     onProgress?.(50, 'Importing event values...');
 
-    // Import event values with new IDs
+    // Import event values using event indices
     const totalValues = data.eventValues.length;
     const batchSize = 100;
 
@@ -129,7 +142,7 @@ export async function importData(data: ExportData, options: {
 
       await Promise.all(
         batch.map(async (valueData) => {
-          const newEventId = idMapping[valueData.eventId];
+          const newEventId = idMapping[valueData.eventIndex];
           if (newEventId) {
             await setEventValue(newEventId, valueData.date, valueData.value);
           }
