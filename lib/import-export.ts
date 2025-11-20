@@ -194,7 +194,7 @@ export async function downloadExportFile(data: ExportData, filename?: string) {
     // iOS/Android: use File and Sharing
     try {
       const file = new File(Paths.document, defaultFilename);
-      file.create();
+      file.create({ overwrite: true });
       file.write(json);
 
       // Check if sharing is available
