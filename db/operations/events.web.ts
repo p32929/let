@@ -55,8 +55,63 @@ export async function getEventValuesForDateRange(eventId: number, startDate: str
   ).sort((a, b) => a.date.localeCompare(b.date));
 }
 
+export async function getEventValuesForDateRangeComplete(
+  eventId: number,
+  startDate: string,
+  endDate: string,
+  eventType: 'boolean' | 'number' | 'string'
+) {
+  const values = await getEventValuesForDateRange(eventId, startDate, endDate);
+
+  const valuesByDate = new Map(values.map((v) => [v.date, v]));
+  const completeValues = [];
+
+  // Generate all dates in range
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  let currentDate = new Date(start);
+
+  // Determine default value based on event type
+  let defaultValue: string;
+  if (eventType === 'boolean') {
+    defaultValue = 'false';
+  } else if (eventType === 'number') {
+    defaultValue = '0';
+  } else {
+    defaultValue = ''; // string type
+  }
+
+  while (currentDate <= end) {
+    const dateStr = currentDate.toISOString().split('T')[0];
+    const existingValue = valuesByDate.get(dateStr);
+
+    if (existingValue) {
+      completeValues.push(existingValue);
+    } else {
+      // Create a placeholder entry for missing date with default value
+      completeValues.push({
+        id: -1, // Placeholder ID
+        eventId,
+        date: dateStr,
+        value: defaultValue,
+        timestamp: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return completeValues;
+}
+
 export async function getEventValuesForDate(date: string) {
   return webDb.getEventValuesForDate(date);
+}
+
+export async function getAllEventValues() {
+  return webDb.getEventValuesForDate(''); // Get all values
 }
 
 export async function deleteEventValue(eventId: number, date: string) {

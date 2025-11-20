@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
+import { logError } from './error-tracker';
 
 export interface ExportData {
   version: string;
@@ -208,7 +209,13 @@ export async function downloadExportFile(data: ExportData, filename?: string) {
         console.warn('Sharing is not available on this device');
       }
     } catch (error) {
-      console.error('Failed to save file:', error);
+      await logError(error, {
+        action: 'Download Export File',
+        additionalInfo: {
+          platform: Platform.OS,
+          filename: defaultFilename,
+        },
+      });
       throw error;
     }
   }
@@ -262,6 +269,13 @@ export async function readImportFile(file?: File): Promise<ExportData> {
       const data = JSON.parse(content);
       return data;
     } catch (error) {
+      await logError(error, {
+        action: 'Read Import File',
+        additionalInfo: {
+          platform: Platform.OS,
+        },
+      });
+
       if (error instanceof Error) {
         throw error;
       }

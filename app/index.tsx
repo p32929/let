@@ -3,7 +3,7 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Stack, router } from 'expo-router';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon, LayoutDashboardIcon } from 'lucide-react-native';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon, LayoutDashboardIcon, AlertCircleIcon } from 'lucide-react-native';
 import * as React from 'react';
 import { View, ScrollView, Pressable, Platform } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -18,6 +18,8 @@ import { getEventValuesForDateRange } from '@/db/operations/events';
 import { exportData, importData, downloadExportFile, readImportFile } from '@/lib/import-export';
 import { getEvents as dbGetEvents, deleteEvent } from '@/db/operations/events';
 import { Calendar } from '@/components/ui/calendar';
+import { logError } from '@/lib/error-tracker';
+import { Alert } from 'react-native';
 
 export default function HomeScreen() {
   const [currentWeekDate, setCurrentWeekDate] = React.useState(new Date());
@@ -196,8 +198,33 @@ export default function HomeScreen() {
       }
       const data = await exportData();
       await downloadExportFile(data);
+
+      // Show success message
+      Alert.alert('Export Successful', 'Your data has been exported successfully!');
     } catch (error) {
-      console.error('Failed to export data:', error);
+      // Log error for debugging
+      await logError(error, {
+        action: 'Export Data',
+        component: 'HomeScreen',
+        additionalInfo: {
+          eventCount: events.length,
+          platform: Platform.OS,
+        },
+      });
+
+      // Show user-friendly error message
+      Alert.alert(
+        'Export Failed',
+        'Failed to export data. The error has been logged. You can view crash reports from the menu.',
+        [
+          { text: 'OK', style: 'default' },
+          {
+            text: 'View Reports',
+            style: 'default',
+            onPress: () => router.push('/crash-reports'),
+          },
+        ]
+      );
     }
   };
 
@@ -232,8 +259,34 @@ export default function HomeScreen() {
         setImportMessage(`Error: ${result.message}`);
       }
     } catch (error) {
-      console.error('Failed to import data:', error);
-      setImportMessage('Failed to import data');
+      // Log error for debugging
+      await logError(error, {
+        action: 'Import Data',
+        component: 'HomeScreen',
+        additionalInfo: {
+          clearExisting,
+          platform: Platform.OS,
+        },
+      });
+
+      setImportMessage('Failed to import data. Error logged.');
+
+      // Show detailed error alert
+      Alert.alert(
+        'Import Failed',
+        'Failed to import data. The error has been logged. You can view crash reports from the menu.',
+        [
+          { text: 'OK', style: 'default' },
+          {
+            text: 'View Reports',
+            style: 'default',
+            onPress: () => {
+              setShowImportDialog(false);
+              router.push('/crash-reports');
+            },
+          },
+        ]
+      );
     } finally {
       setImportingData(false);
       setImportProgress(0);
@@ -290,20 +343,6 @@ export default function HomeScreen() {
   return (
     <>
       <Stack.Screen options={screenOptions} />
-
-      {/* Universal Blocking Overlay - Blocks ALL interactions when any dialog is open (but not menu) */}
-      {isAnyDialogShowing && (
-        <View className="absolute inset-0 bg-black/50 z-[99]" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
-      )}
-
-      {/* Menu Blocking Overlay - Only blocks content below menu, not header buttons */}
-      {showMenu && (
-        <Pressable
-          className="absolute inset-0 bg-black/30 z-[99]"
-          style={{ position: 'absolute', top: 60, left: 0, right: 0, bottom: 0 }}
-          onPress={() => setShowMenu(false)}
-        />
-      )}
 
       <View className="flex-1 bg-white dark:bg-[#0a0a0a] relative">
         <View className="border-b border-[#e5e5e5] dark:border-[#262626] p-4">
@@ -494,6 +533,16 @@ export default function HomeScreen() {
             >
               <Icon as={DatabaseIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
               <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Load Sample Data</Text>
+            </Pressable>
+            <Pressable
+              className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
+              onPress={() => {
+                setShowMenu(false);
+                router.push('/crash-reports' as any);
+              }}
+            >
+              <Icon as={AlertCircleIcon} className="size-5 mr-3 text-[#f97316] dark:text-[#fb923c]" />
+              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Crash Reports</Text>
             </Pressable>
             <Pressable
               className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
