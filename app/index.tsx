@@ -255,10 +255,13 @@ export default function HomeScreen() {
       });
 
       if (result.success) {
-        setImportMessage('Reloading events...');
-        await loadEvents();
+        // Close dialog immediately on success
         setShowImportDialog(false);
         setClearExisting(false);
+        setImportingData(false);
+
+        // Reload events in background
+        await loadEvents();
       } else {
         setImportMessage(`Error: ${result.message}`);
       }
