@@ -18,23 +18,28 @@ const EVENT_TYPES: { value: EventType; label: string; icon: any; description: st
 ];
 
 const PRESET_COLORS = [
-  '#ef4444', // red
-  '#f97316', // orange
-  '#f59e0b', // amber
-  '#eab308', // yellow
-  '#84cc16', // lime
-  '#22c55e', // green
-  '#10b981', // emerald
-  '#14b8a6', // teal
-  '#06b6d4', // cyan
-  '#0ea5e9', // sky
-  '#3b82f6', // blue
-  '#6366f1', // indigo
-  '#8b5cf6', // purple
-  '#a855f7', // violet
-  '#d946ef', // fuchsia
-  '#ec4899', // pink
-  '#f43f5e', // rose
+  // Reds
+  '#ef4444', '#dc2626', '#b91c1c', '#991b1b',
+  // Oranges
+  '#f97316', '#ea580c', '#c2410c', '#9a3412',
+  // Yellows/Amber
+  '#f59e0b', '#eab308', '#ca8a04', '#a16207',
+  // Limes/Greens
+  '#84cc16', '#65a30d', '#22c55e', '#16a34a',
+  // Emeralds/Teals
+  '#10b981', '#059669', '#14b8a6', '#0d9488',
+  // Cyans/Skys
+  '#06b6d4', '#0891b2', '#0ea5e9', '#0284c7',
+  // Blues
+  '#3b82f6', '#2563eb', '#1d4ed8', '#1e40af',
+  // Indigos/Purples
+  '#6366f1', '#4f46e5', '#8b5cf6', '#7c3aed',
+  // Violets/Fuchsias
+  '#a855f7', '#9333ea', '#d946ef', '#c026d3',
+  // Pinks/Roses
+  '#ec4899', '#db2777', '#f43f5e', '#e11d48',
+  // Neutrals
+  '#71717a', '#52525b', '#3f3f46', '#27272a',
 ];
 
 const SCREEN_OPTIONS = {
@@ -166,7 +171,6 @@ export default function AddEventScreen() {
               className="flex-row"
               contentContainerStyle={{ gap: 8 }}
             >
-              {/* Preset Colors */}
               {PRESET_COLORS.map((presetColor) => (
                 <Pressable
                   key={presetColor}
@@ -184,26 +188,6 @@ export default function AddEventScreen() {
                   </View>
                 </Pressable>
               ))}
-
-              {/* Custom Color Picker */}
-              <Pressable
-                onPress={() => {
-                  // @ts-ignore - web only
-                  if (typeof document !== 'undefined') {
-                    const input = document.createElement('input');
-                    input.type = 'color';
-                    input.value = color;
-                    input.onchange = (e: any) => setColor(e.target.value);
-                    input.click();
-                  }
-                }}
-                className="size-12 rounded-lg border-2 border-dashed border-border bg-muted items-center justify-center"
-              >
-                <View
-                  className="size-8 rounded-md border border-border"
-                  style={{ backgroundColor: color }}
-                />
-              </Pressable>
             </ScrollView>
           </View>
 
