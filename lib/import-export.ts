@@ -42,19 +42,38 @@ export async function exportData(): Promise<ExportData> {
     color: e.color,
   }));
 
-  // Create a mapping from event ID to index
+  // Create a mapping from event ID to index and type
   const eventIdToIndex = new Map<number, number>();
+  const eventIdToType = new Map<number, 'boolean' | 'number' | 'string'>();
   allEvents.forEach((e, index) => {
     eventIdToIndex.set(e.id, index);
+    eventIdToType.set(e.id, e.type);
   });
 
   // Get all event values (pass empty string to get all)
   const values = await getEventValuesForDate('');
-  const allEventValues = values.map((v) => ({
-    eventIndex: eventIdToIndex.get(v.eventId) ?? 0,
-    date: v.date,
-    value: v.value,
-  }));
+
+  // Filter out default values to reduce file size:
+  // - Boolean: skip "false"
+  // - Number: skip "0"
+  // - String: skip empty strings
+  const allEventValues = values
+    .filter((v) => {
+      const eventType = eventIdToType.get(v.eventId);
+      if (!eventType) return false;
+
+      // Skip default values
+      if (eventType === 'boolean' && v.value === 'false') return false;
+      if (eventType === 'number' && (v.value === '0' || v.value === '0.0')) return false;
+      if (eventType === 'string' && v.value === '') return false;
+
+      return true;
+    })
+    .map((v) => ({
+      eventIndex: eventIdToIndex.get(v.eventId) ?? 0,
+      date: v.date,
+      value: v.value,
+    }));
 
   // Get settings from storage
   const settings: any = {};
