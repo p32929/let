@@ -32,6 +32,11 @@ interface EventDataPoint {
   value: number | string;
 }
 
+// Smart number formatting - shows integers without decimals, decimals when needed
+function formatNumber(num: number): string {
+  return Number.isInteger(num) ? num.toString() : num.toFixed(1);
+}
+
 type PatternStrength = 'weak' | 'moderate' | 'strong' | 'very-strong';
 
 interface Pattern {
@@ -93,7 +98,11 @@ export default function DashboardScreen() {
               ? v.value
               : event.type === 'boolean'
                 ? (v.value === 'true' ? 1 : 0)
-                : parseFloat(v.value) || 0,
+                : (() => {
+                    const num = parseFloat(v.value) || 0;
+                    // Preserve integers - don't force to float
+                    return Number.isInteger(num) ? Math.round(num) : num;
+                  })(),
           }));
 
           return { event, dataPoints };
@@ -396,9 +405,9 @@ export default function DashboardScreen() {
               const unit = part.primaryRange.unit ? ` ${part.primaryRange.unit}` : '';
 
               if (overallMax - overallMin > 0.1) {
-                mergedParts.push(`${part.eventName} ${overallMin.toFixed(1)}-${overallMax.toFixed(1)}${unit}`);
+                mergedParts.push(`${part.eventName} ${formatNumber(overallMin)}-${formatNumber(overallMax)}${unit}`);
               } else {
-                mergedParts.push(`${part.eventName} ~${overallMin.toFixed(1)}${unit}`);
+                mergedParts.push(`${part.eventName} ~${formatNumber(overallMin)}${unit}`);
               }
             }
           } else if (part.numberRange) {
@@ -413,10 +422,10 @@ export default function DashboardScreen() {
               const unit = part.numberRange.unit ? ` ${part.numberRange.unit}` : '';
 
               if (overallMax - overallMin > 0.1) {
-                mergedParts.push(`${part.eventName} ${overallMin.toFixed(1)}-${overallMax.toFixed(1)}${unit}`);
+                mergedParts.push(`${part.eventName} ${formatNumber(overallMin)}-${formatNumber(overallMax)}${unit}`);
               } else {
                 const avgVal = (overallMin + overallMax) / 2;
-                mergedParts.push(`${part.eventName} ~${avgVal.toFixed(1)}${unit}`);
+                mergedParts.push(`${part.eventName} ~${formatNumber(avgVal)}${unit}`);
               }
             }
           }
@@ -737,7 +746,7 @@ export default function DashboardScreen() {
                   const originalValue = tooltipPos.data[event.name + '_original'];
                   const displayValue = (originalValue !== undefined && originalValue !== null)
                     ? originalValue
-                    : value.toFixed(1);
+                    : formatNumber(value);
 
                   return (
                     <View key={event.id} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
