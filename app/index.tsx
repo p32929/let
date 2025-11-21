@@ -45,6 +45,8 @@ export default function HomeScreen() {
   const [showExportSuccessDialog, setShowExportSuccessDialog] = React.useState(false);
   const [showExportErrorDialog, setShowExportErrorDialog] = React.useState(false);
   const [showImportErrorDialog, setShowImportErrorDialog] = React.useState(false);
+  const [showImportSuccessDialog, setShowImportSuccessDialog] = React.useState(false);
+  const [importSuccessMessage, setImportSuccessMessage] = React.useState('');
   const [isResetting, setIsResetting] = React.useState(false);
   const [importingData, setImportingData] = React.useState(false);
   const [importProgress, setImportProgress] = React.useState(0);
@@ -257,14 +259,11 @@ export default function HomeScreen() {
         setImportMessage('Reloading events...');
         await loadEvents();
 
-        setImportProgress(100);
-        setImportMessage('Import complete!');
-
-        // Keep dialog open for 1.5 seconds to show completion
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
+        // Close import dialog and show success dialog
         setShowImportDialog(false);
         setClearExisting(false);
+        setImportSuccessMessage(result.message);
+        setShowImportSuccessDialog(true);
       } else {
         setImportMessage(`Error: ${result.message}`);
       }
@@ -855,6 +854,23 @@ export default function HomeScreen() {
               <Text>View Reports</Text>
             </AlertDialogAction>
             <AlertDialogAction onPress={() => setShowImportErrorDialog(false)}>
+              <Text>OK</Text>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Import Success Dialog */}
+      <AlertDialog open={showImportSuccessDialog} onOpenChange={setShowImportSuccessDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Import Successful</AlertDialogTitle>
+            <AlertDialogDescription>
+              {importSuccessMessage}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onPress={() => setShowImportSuccessDialog(false)}>
               <Text>OK</Text>
             </AlertDialogAction>
           </AlertDialogFooter>
