@@ -224,24 +224,44 @@ export default function DashboardScreen() {
     // Check if all values are integers
     const allIntegers = values.every(v => Number.isInteger(v));
 
-    // Create 3 buckets based on the FIRST event
-    const bucketSize = range / 3;
-    const buckets = allIntegers ? [
-      // For integer data, round bucket boundaries to integers
-      { name: 'low', min: Math.floor(min), max: Math.ceil(min + bucketSize), dates: [] as string[] },
-      { name: 'mid', min: Math.ceil(min + bucketSize), max: Math.ceil(min + (bucketSize * 2)), dates: [] as string[] },
-      { name: 'high', min: Math.ceil(min + (bucketSize * 2)), max: Math.ceil(max), dates: [] as string[] },
-    ] : [
-      // For decimal data, keep precise boundaries
-      { name: 'low', min, max: min + bucketSize, dates: [] as string[] },
-      { name: 'mid', min: min + bucketSize, max: min + (bucketSize * 2), dates: [] as string[] },
-      { name: 'high', min: min + (bucketSize * 2), max, dates: [] as string[] },
-    ];
+    // Use 2 buckets for small datasets (2-5 data points), 3 buckets for larger
+    // This ensures each bucket has enough data points for meaningful patterns
+    const useTwoBuckets = numericValues.length < 6;
+
+    let buckets: { name: string; min: number; max: number; dates: string[] }[];
+
+    if (useTwoBuckets) {
+      // 2 buckets: low/high (for small datasets)
+      const bucketSize = range / 2;
+      buckets = allIntegers ? [
+        { name: 'low', min: Math.floor(min), max: Math.ceil(min + bucketSize), dates: [] as string[] },
+        { name: 'high', min: Math.ceil(min + bucketSize), max: Math.ceil(max), dates: [] as string[] },
+      ] : [
+        { name: 'low', min, max: min + bucketSize, dates: [] as string[] },
+        { name: 'high', min: min + bucketSize, max, dates: [] as string[] },
+      ];
+    } else {
+      // 3 buckets: low/mid/high (for larger datasets)
+      const bucketSize = range / 3;
+      buckets = allIntegers ? [
+        { name: 'low', min: Math.floor(min), max: Math.ceil(min + bucketSize), dates: [] as string[] },
+        { name: 'mid', min: Math.ceil(min + bucketSize), max: Math.ceil(min + (bucketSize * 2)), dates: [] as string[] },
+        { name: 'high', min: Math.ceil(min + (bucketSize * 2)), max: Math.ceil(max), dates: [] as string[] },
+      ] : [
+        { name: 'low', min, max: min + bucketSize, dates: [] as string[] },
+        { name: 'mid', min: min + bucketSize, max: min + (bucketSize * 2), dates: [] as string[] },
+        { name: 'high', min: min + (bucketSize * 2), max, dates: [] as string[] },
+      ];
+    }
 
     for (const { date, value } of numericValues) {
-      if (value < buckets[0].max) buckets[0].dates.push(date);
-      else if (value < buckets[1].max) buckets[1].dates.push(date);
-      else buckets[2].dates.push(date);
+      if (value < buckets[0].max) {
+        buckets[0].dates.push(date);
+      } else if (buckets.length > 2 && value < buckets[1].max) {
+        buckets[1].dates.push(date);
+      } else {
+        buckets[buckets.length - 1].dates.push(date);
+      }
     }
 
     // Store pattern data for each bucket with full details
@@ -266,8 +286,12 @@ export default function DashboardScreen() {
     const bucketPatterns: BucketPattern[] = [];
 
     // For each bucket, build detailed pattern data
+    // For small datasets (2 buckets), allow single data point per bucket
+    // For larger datasets (3 buckets), require at least 2 points per bucket
+    const minBucketSize = useTwoBuckets ? 1 : 2;
+
     for (const bucket of buckets) {
-      if (bucket.dates.length < 2) continue;
+      if (bucket.dates.length < minBucketSize) continue;
 
       const parts: BucketPattern['parts'] = [];
       const relatedEvents: Event[] = [];
