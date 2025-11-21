@@ -10,8 +10,9 @@
     "clean": "rm -rf .expo node_modules yarn.lock",
     "typecheck": "tsc --noEmit",
     "prepare": "husky",
-    "build:apk": "eas build --platform android --profile preview",
-    "build:apk:local": "expo run:android --variant release",
+    "build:apk": "npx expo prebuild && cd android && ./gradlew assembleRelease && cd .. && echo '\n✅ APK built at: android/app/build/outputs/apk/release/app-release.apk'",
+    "build:apk:install": "npx expo prebuild && cd android && ./gradlew installRelease && cd ..",
+    "build:apk:cloud": "eas build --platform android --profile preview",
     "build:aab": "eas build --platform android --profile production"
   },
   "dependencies": {
