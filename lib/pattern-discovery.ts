@@ -24,6 +24,49 @@ function calculateStrength(confidence: number): 'weak' | 'moderate' | 'strong' |
   return 'weak';
 }
 
+// Helper to format event value for display
+function formatEventValue(event: Event, dataPoints: EventDataPoint[]): string {
+  if (dataPoints.length === 0) return '-';
+
+  if (event.type === 'boolean') {
+    const trueCount = dataPoints.filter(d => d.value === 1 || d.value === 'true').length;
+    const rate = (trueCount / dataPoints.length) * 100;
+    if (rate >= 70) return '✓';
+    if (rate <= 30) return '✗';
+    return `${rate.toFixed(0)}%`;
+  } else if (event.type === 'number') {
+    const values = dataPoints.map(d => Number(d.value) || 0);
+    const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+
+    if (min === max) {
+      return `${Number.isInteger(avg) ? avg : avg.toFixed(1)}${event.unit || ''}`;
+    } else {
+      return `${Number.isInteger(min) ? min : min.toFixed(1)}-${Number.isInteger(max) ? max : max.toFixed(1)}${event.unit || ''}`;
+    }
+  } else {
+    // String type - show most common value
+    const valueCounts = new Map<string, number>();
+    dataPoints.forEach(d => {
+      const val = String(d.value);
+      valueCounts.set(val, (valueCounts.get(val) || 0) + 1);
+    });
+
+    let mostCommon = '';
+    let maxCount = 0;
+    valueCounts.forEach((count, val) => {
+      if (count > maxCount) {
+        maxCount = count;
+        mostCommon = val;
+      }
+    });
+
+    const rate = (maxCount / dataPoints.length) * 100;
+    return rate >= 70 ? mostCommon : `${mostCommon} ${rate.toFixed(0)}%`;
+  }
+}
+
 // Discover patterns in event data
 export function discoverPatterns(
   allData: { event: Event; dataPoints: EventDataPoint[] }[]
@@ -32,20 +75,15 @@ export function discoverPatterns(
 
   const patterns: Pattern[] = [];
 
-  // 1. CONDITIONAL PATTERNS: If A then B (including NOT A)
-  const conditionalPatterns = findConditionalPatterns(allData);
-  patterns.push(...conditionalPatterns);
+  // Sort events by their order property
+  const sortedData = [...allData].sort((a, b) => a.event.order - b.event.order);
 
-  // 2. CORRELATION PATTERNS: Numeric correlations
-  const correlationPatterns = findCorrelationPatterns(allData);
-  patterns.push(...correlationPatterns);
+  // 1. CO-OCCURRENCE PATTERNS: Show all events together for specific conditions
+  const coOccurrencePatterns = findCoOccurrencePatterns(sortedData);
+  patterns.push(...coOccurrencePatterns);
 
-  // 3. SEQUENTIAL PATTERNS: A followed by B
-  const sequentialPatterns = findSequentialPatterns(allData);
-  patterns.push(...sequentialPatterns);
-
-  // 4. DAY-OF-WEEK PATTERNS: Events that happen together on specific days
-  const dayPatterns = findDayOfWeekPatterns(allData);
+  // 2. DAY-OF-WEEK PATTERNS: Events that happen together on specific days
+  const dayPatterns = findDayOfWeekPatterns(sortedData);
   patterns.push(...dayPatterns);
 
   // Sort by confidence and return top patterns
@@ -55,283 +93,181 @@ export function discoverPatterns(
     .slice(0, 20); // Top 20 patterns
 }
 
-// 1. CONDITIONAL PATTERNS: If A then B
-function findConditionalPatterns(allData: { event: Event; dataPoints: EventDataPoint[] }[]): Pattern[] {
+// 1. CO-OCCURRENCE PATTERNS: Show ALL events together
+function findCoOccurrencePatterns(sortedData: { event: Event; dataPoints: EventDataPoint[] }[]): Pattern[] {
   const patterns: Pattern[] = [];
 
-  for (let i = 0; i < allData.length; i++) {
-    for (let j = 0; j < allData.length; j++) {
-      if (i === j) continue;
+  // Find boolean events to use as conditions
+  const booleanEvents = sortedData.filter(d => d.event.type === 'boolean');
 
-      const eventA = allData[i];
-      const eventB = allData[j];
+  for (const conditionEvent of booleanEvents) {
+    // When condition is TRUE
+    const trueDates = conditionEvent.dataPoints
+      .filter(d => d.value === 1 || d.value === 'true')
+      .map(d => d.date);
 
-      // Skip if not boolean events
-      if (eventA.event.type !== 'boolean') continue;
+    if (trueDates.length >= 5) {
+      // Get data for all events on those dates (in order)
+      const eventSummaries: string[] = [];
+      const relatedEvents: Event[] = [];
 
-      // Find common dates
-      const datesA = new Set(eventA.dataPoints.map(d => d.date));
-      const commonDates = eventB.dataPoints.filter(d => datesA.has(d.date));
+      for (const { event, dataPoints } of sortedData) {
+        const matchingData = dataPoints.filter(d => trueDates.includes(d.date));
 
-      if (commonDates.length < 5) continue; // Need at least 5 samples
-
-      // Check: When A is TRUE, what % of time is B true/high?
-      const aTrueDates = eventA.dataPoints.filter(d => d.value === 1 || d.value === 'true').map(d => d.date);
-      const aFalseDates = eventA.dataPoints.filter(d => d.value === 0 || d.value === 'false').map(d => d.date);
-
-      // When A is TRUE
-      if (aTrueDates.length >= 3) {
-        const bWhenATrue = eventB.dataPoints.filter(d => aTrueDates.includes(d.date));
-
-        if (bWhenATrue.length >= 3) {
-          if (eventB.event.type === 'boolean') {
-            const bTrueCount = bWhenATrue.filter(d => d.value === 1 || d.value === 'true').length;
-            const confidence = (bTrueCount / bWhenATrue.length) * 100;
-
-            if (confidence >= 65) {
-              patterns.push({
-                description: `When ${eventA.event.name} ✓ → ${eventB.event.name} ✓ ${confidence.toFixed(0)}% of the time`,
-                confidence,
-                type: 'conditional',
-                events: [eventA.event, eventB.event],
-                strength: calculateStrength(confidence),
-                sampleSize: bWhenATrue.length,
-                details: `Out of ${aTrueDates.length} days with ${eventA.event.name}, ${eventB.event.name} happened ${bTrueCount} times`,
-              });
-            }
-          } else if (eventB.event.type === 'number') {
-            const avgWhenATrue = bWhenATrue.reduce((sum, d) => sum + (Number(d.value) || 0), 0) / bWhenATrue.length;
-
-            // Compare to overall average
-            const overallAvg = eventB.dataPoints.reduce((sum, d) => sum + (Number(d.value) || 0), 0) / eventB.dataPoints.length;
-
-            const percentDiff = ((avgWhenATrue - overallAvg) / overallAvg) * 100;
-
-            if (Math.abs(percentDiff) >= 20) {
-              // At least 20% difference
-              const confidence = Math.min(95, 65 + Math.abs(percentDiff));
-
-              patterns.push({
-                description: `When ${eventA.event.name} ✓ → ${eventB.event.name} avg ${avgWhenATrue.toFixed(1)}${eventB.event.unit || ''} (${percentDiff > 0 ? '+' : ''}${percentDiff.toFixed(0)}%)`,
-                confidence,
-                type: 'conditional',
-                events: [eventA.event, eventB.event],
-                strength: calculateStrength(confidence),
-                sampleSize: bWhenATrue.length,
-              });
-            }
-          }
+        if (matchingData.length > 0) {
+          relatedEvents.push(event);
+          const valueStr = formatEventValue(event, matchingData);
+          eventSummaries.push(`${event.name}: ${valueStr}`);
         }
       }
 
-      // When A is FALSE
-      if (aFalseDates.length >= 3) {
-        const bWhenAFalse = eventB.dataPoints.filter(d => aFalseDates.includes(d.date));
-
-        if (bWhenAFalse.length >= 3) {
-          if (eventB.event.type === 'boolean') {
-            const bTrueCount = bWhenAFalse.filter(d => d.value === 1 || d.value === 'true').length;
-            const confidence = (bTrueCount / bWhenAFalse.length) * 100;
-
-            if (confidence >= 65) {
-              patterns.push({
-                description: `When ${eventA.event.name} ✗ → ${eventB.event.name} ✓ ${confidence.toFixed(0)}% of the time`,
-                confidence,
-                type: 'conditional',
-                events: [eventA.event, eventB.event],
-                strength: calculateStrength(confidence),
-                sampleSize: bWhenAFalse.length,
-                details: `Out of ${aFalseDates.length} days without ${eventA.event.name}, ${eventB.event.name} happened ${bTrueCount} times`,
-              });
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return patterns;
-}
-
-// 2. CORRELATION PATTERNS: Numeric correlations
-function findCorrelationPatterns(allData: { event: Event; dataPoints: EventDataPoint[] }[]): Pattern[] {
-  const patterns: Pattern[] = [];
-
-  const numericEvents = allData.filter(d => d.event.type === 'number');
-
-  for (let i = 0; i < numericEvents.length; i++) {
-    for (let j = i + 1; j < numericEvents.length; j++) {
-      const eventA = numericEvents[i];
-      const eventB = numericEvents[j];
-
-      // Find common dates
-      const dateMapA = new Map(eventA.dataPoints.map(d => [d.date, Number(d.value)]));
-      const pairs: Array<[number, number]> = [];
-
-      for (const pointB of eventB.dataPoints) {
-        const valueA = dateMapA.get(pointB.date);
-        if (valueA !== undefined) {
-          pairs.push([valueA, Number(pointB.value)]);
-        }
-      }
-
-      if (pairs.length < 5) continue; // Need at least 5 samples
-
-      // Calculate Pearson correlation
-      const correlation = calculatePearsonCorrelation(pairs);
-
-      if (Math.abs(correlation) >= 0.5) {
-        // At least moderate correlation
-        const confidence = Math.min(95, 65 + Math.abs(correlation) * 30);
-
-        const direction = correlation > 0 ? 'increases' : 'decreases';
-        const absCorr = Math.abs(correlation);
+      if (eventSummaries.length >= 2) {
+        const description = eventSummaries.join(' → ');
+        const confidence = Math.min(95, 65 + (trueDates.length * 2));
 
         patterns.push({
-          description: `${eventA.event.name} & ${eventB.event.name} ${direction} together (${(absCorr * 100).toFixed(0)}% correlation)`,
+          description,
           confidence,
-          type: 'correlation',
-          events: [eventA.event, eventB.event],
+          type: 'co-occurrence',
+          events: relatedEvents,
           strength: calculateStrength(confidence),
-          sampleSize: pairs.length,
-          details: `Correlation coefficient: ${correlation.toFixed(2)}`,
+          sampleSize: trueDates.length,
+          details: `When ${conditionEvent.event.name} is true (${trueDates.length} occurrences)`,
+        });
+      }
+    }
+
+    // When condition is FALSE
+    const falseDates = conditionEvent.dataPoints
+      .filter(d => d.value === 0 || d.value === 'false')
+      .map(d => d.date);
+
+    if (falseDates.length >= 5) {
+      // Get data for all events on those dates (in order)
+      const eventSummaries: string[] = [];
+      const relatedEvents: Event[] = [];
+
+      for (const { event, dataPoints } of sortedData) {
+        const matchingData = dataPoints.filter(d => falseDates.includes(d.date));
+
+        if (matchingData.length > 0) {
+          relatedEvents.push(event);
+          const valueStr = formatEventValue(event, matchingData);
+          eventSummaries.push(`${event.name}: ${valueStr}`);
+        }
+      }
+
+      if (eventSummaries.length >= 2) {
+        const description = eventSummaries.join(' → ');
+        const confidence = Math.min(95, 65 + (falseDates.length * 2));
+
+        patterns.push({
+          description,
+          confidence,
+          type: 'co-occurrence',
+          events: relatedEvents,
+          strength: calculateStrength(confidence),
+          sampleSize: falseDates.length,
+          details: `When ${conditionEvent.event.name} is false (${falseDates.length} occurrences)`,
         });
       }
     }
   }
 
-  return patterns;
-}
+  // Also create patterns for all events together (no specific condition)
+  const allDates = new Set<string>();
+  sortedData.forEach(({ dataPoints }) => {
+    dataPoints.forEach(d => allDates.add(d.date));
+  });
 
-// 3. SEQUENTIAL PATTERNS: A followed by B
-function findSequentialPatterns(allData: { event: Event; dataPoints: EventDataPoint[] }[]): Pattern[] {
-  const patterns: Pattern[] = [];
+  if (allDates.size >= 10) {
+    const eventSummaries: string[] = [];
+    const relatedEvents: Event[] = [];
 
-  for (let i = 0; i < allData.length; i++) {
-    for (let j = 0; j < allData.length; j++) {
-      if (i === j) continue;
-
-      const eventA = allData[i];
-      const eventB = allData[j];
-
-      // Only check boolean events for sequential patterns
-      if (eventA.event.type !== 'boolean' || eventB.event.type !== 'boolean') continue;
-
-      // Find dates where A is true
-      const aTrueDates = eventA.dataPoints
-        .filter(d => d.value === 1 || d.value === 'true')
-        .map(d => d.date);
-
-      if (aTrueDates.length < 3) continue;
-
-      // Check: Within 1-3 days after A, does B happen?
-      const bAfterA: { days: number; happened: boolean }[] = [];
-
-      for (const aDate of aTrueDates) {
-        const aParsed = parseISO(aDate);
-
-        // Check next 1-3 days
-        for (const bPoint of eventB.dataPoints) {
-          const bParsed = parseISO(bPoint.date);
-          const daysDiff = differenceInDays(bParsed, aParsed);
-
-          if (daysDiff >= 1 && daysDiff <= 3) {
-            bAfterA.push({
-              days: daysDiff,
-              happened: bPoint.value === 1 || bPoint.value === 'true',
-            });
-            break; // Only count first occurrence
-          }
-        }
+    for (const { event, dataPoints } of sortedData) {
+      if (dataPoints.length > 0) {
+        relatedEvents.push(event);
+        const valueStr = formatEventValue(event, dataPoints);
+        eventSummaries.push(`${event.name}: ${valueStr}`);
       }
+    }
 
-      if (bAfterA.length >= 3) {
-        const bHappenedCount = bAfterA.filter(b => b.happened).length;
-        const confidence = (bHappenedCount / bAfterA.length) * 100;
+    if (eventSummaries.length >= 2) {
+      const description = `Overall: ${eventSummaries.join(' → ')}`;
+      const confidence = 75;
 
-        if (confidence >= 65) {
-          const avgDays = bAfterA.filter(b => b.happened).reduce((sum, b) => sum + b.days, 0) / bHappenedCount;
-
-          patterns.push({
-            description: `${eventA.event.name} followed by ${eventB.event.name} within ${avgDays.toFixed(1)} days (${confidence.toFixed(0)}%)`,
-            confidence,
-            type: 'sequential',
-            events: [eventA.event, eventB.event],
-            strength: calculateStrength(confidence),
-            sampleSize: bAfterA.length,
-          });
-        }
-      }
+      patterns.push({
+        description,
+        confidence,
+        type: 'co-occurrence',
+        events: relatedEvents,
+        strength: calculateStrength(confidence),
+        sampleSize: allDates.size,
+        details: 'Overall pattern across all dates',
+      });
     }
   }
 
   return patterns;
 }
 
-// 4. DAY-OF-WEEK PATTERNS
-function findDayOfWeekPatterns(allData: { event: Event; dataPoints: EventDataPoint[] }[]): Pattern[] {
+// 2. DAY-OF-WEEK PATTERNS: Show all events for specific days
+function findDayOfWeekPatterns(sortedData: { event: Event; dataPoints: EventDataPoint[] }[]): Pattern[] {
   const patterns: Pattern[] = [];
-
-  // Group by day of week
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-  for (const eventData of allData) {
-    if (eventData.event.type !== 'boolean') continue;
+  // Group all data by day of week
+  const byDay: Record<number, string[]> = {};
+  for (let i = 0; i < 7; i++) {
+    byDay[i] = [];
+  }
 
-    const byDay: Record<number, { total: number; true: number }> = {};
+  // Collect all dates
+  const allDates = new Set<string>();
+  sortedData.forEach(({ dataPoints }) => {
+    dataPoints.forEach(d => allDates.add(d.date));
+  });
 
-    for (let i = 0; i < 7; i++) {
-      byDay[i] = { total: 0, true: 0 };
-    }
+  // Categorize dates by day of week
+  allDates.forEach(date => {
+    const dayIndex = getDay(parseISO(date));
+    byDay[dayIndex].push(date);
+  });
 
-    for (const point of eventData.dataPoints) {
-      const dayIndex = getDay(parseISO(point.date));
-      byDay[dayIndex].total++;
-      if (point.value === 1 || point.value === 'true') {
-        byDay[dayIndex].true++;
+  // For each day with enough data, create a pattern showing all events
+  for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+    const dates = byDay[dayIndex];
+
+    if (dates.length < 3) continue; // Need at least 3 samples
+
+    const eventSummaries: string[] = [];
+    const relatedEvents: Event[] = [];
+
+    for (const { event, dataPoints } of sortedData) {
+      const matchingData = dataPoints.filter(d => dates.includes(d.date));
+
+      if (matchingData.length > 0) {
+        relatedEvents.push(event);
+        const valueStr = formatEventValue(event, matchingData);
+        eventSummaries.push(`${event.name}: ${valueStr}`);
       }
     }
 
-    // Find days with high occurrence rate
-    for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
-      const stats = byDay[dayIndex];
+    if (eventSummaries.length >= 2) {
+      const description = `${dayNames[dayIndex]}: ${eventSummaries.join(' → ')}`;
+      const confidence = Math.min(95, 65 + dates.length);
 
-      if (stats.total < 3) continue; // Need at least 3 samples
-
-      const rate = (stats.true / stats.total) * 100;
-
-      if (rate >= 70) {
-        // Happens 70%+ of the time on this day
-        patterns.push({
-          description: `${eventData.event.name} happens on ${dayNames[dayIndex]}s (${rate.toFixed(0)}% of ${dayNames[dayIndex]}s)`,
-          confidence: Math.min(95, 65 + (rate - 70)),
-          type: 'co-occurrence',
-          events: [eventData.event],
-          strength: calculateStrength(Math.min(95, 65 + (rate - 70))),
-          sampleSize: stats.total,
-        });
-      }
+      patterns.push({
+        description,
+        confidence,
+        type: 'co-occurrence',
+        events: relatedEvents,
+        strength: calculateStrength(confidence),
+        sampleSize: dates.length,
+        details: `Pattern on ${dayNames[dayIndex]}s (${dates.length} occurrences)`,
+      });
     }
   }
 
   return patterns;
-}
-
-// Calculate Pearson correlation coefficient
-function calculatePearsonCorrelation(pairs: Array<[number, number]>): number {
-  const n = pairs.length;
-  if (n === 0) return 0;
-
-  const sumX = pairs.reduce((sum, [x]) => sum + x, 0);
-  const sumY = pairs.reduce((sum, [, y]) => sum + y, 0);
-  const sumXY = pairs.reduce((sum, [x, y]) => sum + x * y, 0);
-  const sumX2 = pairs.reduce((sum, [x]) => sum + x * x, 0);
-  const sumY2 = pairs.reduce((sum, [, y]) => sum + y * y, 0);
-
-  const numerator = n * sumXY - sumX * sumY;
-  const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
-
-  if (denominator === 0) return 0;
-
-  return numerator / denominator;
 }
