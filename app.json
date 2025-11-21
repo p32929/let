@@ -17,7 +17,8 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lifeeventstracker.app"
     },
     "android": {
       "package": "com.lifeeventstracker.app",
