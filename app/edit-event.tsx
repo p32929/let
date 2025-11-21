@@ -75,6 +75,13 @@ export default function EditEventScreen() {
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
   const insets = useSafeAreaInsets();
 
+  // Redirect to index if no events
+  React.useEffect(() => {
+    if (events.length === 0) {
+      router.replace('/');
+    }
+  }, [events.length]);
+
   React.useEffect(() => {
     if (event) {
       setName(event.name);

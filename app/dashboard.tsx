@@ -184,6 +184,13 @@ export default function DashboardScreen() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSummaryLoading, setIsSummaryLoading] = React.useState(false);
 
+  // Redirect to index if no events
+  React.useEffect(() => {
+    if (!isLoading && events.length === 0) {
+      router.replace('/');
+    }
+  }, [events.length, isLoading]);
+
   React.useEffect(() => {
     loadDashboardData();
   }, [events]);
