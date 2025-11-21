@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getEventValuesForDateRangeComplete } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
 import type { Event } from '@/types/events';
+import { findFirstMeaningfulDate, isDefaultValue } from '@/lib/data-optimization';
 import { Copy } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -84,15 +85,22 @@ export default function DashboardScreen() {
       setIsLoading(true);
       try {
         const endDate = new Date();
-        const startDate = subDays(endDate, 365); // Load 1 year for pattern detection
-        const startStr = format(startDate, 'yyyy-MM-dd');
+
+        // Find the first meaningful date (where at least one event has non-default value)
+        const firstMeaningfulDate = await findFirstMeaningfulDate(events);
+
+        // Use first meaningful date or default to 365 days ago
+        const startStr = firstMeaningfulDate || format(subDays(endDate, 365), 'yyyy-MM-dd');
         const endStr = format(endDate, 'yyyy-MM-dd');
 
-        // Load all data for pattern detection
+        // Load all data for pattern detection (starting from first meaningful date)
         const dataPromises = events.map(async (event) => {
           const values = await getEventValuesForDateRangeComplete(event.id, startStr, endStr, event.type);
 
-          const dataPoints: EventDataPoint[] = values.map((v) => ({
+          // Filter out default values for pattern detection
+          const nonDefaultValues = values.filter(v => !isDefaultValue(v.value, event.type));
+
+          const dataPoints: EventDataPoint[] = nonDefaultValues.map((v) => ({
             date: v.date,
             value: event.type === 'string'
               ? v.value

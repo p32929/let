@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getEventValuesForDateRangeComplete, getAllEventValues } from '@/db/operations/events';
 import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, differenceInDays, getDay, subMonths, addDays, isSameMonth, getDaysInMonth } from 'date-fns';
 import type { Event } from '@/types/events';
+import { findFirstMeaningfulDate, getAllNonDefaultEventValues, isDefaultValue } from '@/lib/data-optimization';
 import { TrendingUpIcon, TrendingDownIcon, TargetIcon, CalendarIcon, AwardIcon, ActivityIcon, CheckCircle2Icon, ZapIcon, TrophyIcon, SparklesIcon, FlameIcon, AlertCircleIcon } from 'lucide-react-native';
 import Svg, { Rect, Line as SvgLine, Circle, Path, Text as SvgText } from 'react-native-svg';
 
@@ -339,6 +340,12 @@ export default function DashboardScreen() {
     try {
       const today = new Date();
 
+      // Find the first meaningful date (where at least one event has non-default value)
+      const firstMeaningfulDate = await findFirstMeaningfulDate(events);
+
+      // If no meaningful data exists, use a reasonable default (30 days ago)
+      const dataStartDate = firstMeaningfulDate || format(subDays(today, 29), 'yyyy-MM-dd');
+
       // Get this week, last week, this month, last month dates
       const thisWeekStart = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
       const thisWeekEnd = format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
@@ -351,31 +358,36 @@ export default function DashboardScreen() {
       const lastMonthEnd = format(endOfMonth(subMonths(today, 1)), 'yyyy-MM-dd');
 
       // Calculate tracking streak (consecutive days with ALL events tracked)
-      let streak = 0;
-      const allValues = await getAllEventValues();
-      const valuesByDate = allValues.reduce((acc, val) => {
+      // Load only non-default values from first meaningful date
+      const todayStr = format(today, 'yyyy-MM-dd');
+
+      // Get all non-default values from the first meaningful date to today
+      const allNonDefaultValues = await getAllNonDefaultEventValues(events, dataStartDate, todayStr);
+
+      const valuesByDate = allNonDefaultValues.reduce((acc, val) => {
         if (!acc[val.date]) acc[val.date] = [];
         acc[val.date].push(val);
         return acc;
       }, {} as Record<string, any[]>);
 
-      for (let i = 0; i < 30; i++) {
+      // Calculate streak starting from today going backwards
+      let streak = 0;
+
+      // Only check dates from first meaningful date onwards
+      const daysToCheck = Math.min(30, Math.ceil((today.getTime() - new Date(dataStartDate).getTime()) / (1000 * 60 * 60 * 24)));
+
+      for (let i = 0; i < daysToCheck; i++) {
         const dateStr = format(subDays(today, i), 'yyyy-MM-dd');
+
+        // Skip dates before first meaningful date
+        if (dateStr < dataStartDate) break;
+
         const dayValues = valuesByDate[dateStr] || [];
 
-        // Check if all events are tracked for this day
+        // Check if all events have non-default values for this day
+        // Since we're only loading non-default values, we just need to check if each event has a value
         const allTracked = events.every(event => {
-          const eventValue = dayValues.find(v => v.eventId === event.id);
-          if (!eventValue) return false;
-
-          if (event.type === 'boolean') {
-            return eventValue.value === 'true' || eventValue.value === 'false';
-          } else if (event.type === 'number') {
-            const val = parseFloat(eventValue.value);
-            return !isNaN(val);
-          } else {
-            return eventValue.value && eventValue.value.trim() !== '';
-          }
+          return dayValues.some(v => v.eventId === event.id);
         });
 
         if (allTracked) {
@@ -525,33 +537,32 @@ export default function DashboardScreen() {
       );
       setMonthComparisons(monthComps);
 
-      // Calculate best day of week (last 30 days)
+      // Calculate best day of week (from first meaningful date)
       const dayStats: Record<number, { total: number; completed: number }> = {};
       for (let i = 0; i < 7; i++) {
         dayStats[i] = { total: 0, completed: 0 };
       }
 
-      for (let i = 0; i < 30; i++) {
+      // Use data from first meaningful date to today
+      const daysForDayOfWeek = Math.min(30, Math.ceil((today.getTime() - new Date(dataStartDate).getTime()) / (1000 * 60 * 60 * 24)));
+
+      for (let i = 0; i < daysForDayOfWeek; i++) {
         const date = subDays(today, i);
         const dateStr = format(date, 'yyyy-MM-dd');
+
+        // Skip dates before first meaningful date
+        if (dateStr < dataStartDate) continue;
+
         const dayIndex = getDay(date);
         const dayValues = valuesByDate[dateStr] || [];
 
         events.forEach(event => {
-          const eventValue = dayValues.find(v => v.eventId === event.id);
           dayStats[dayIndex].total++;
 
-          if (eventValue) {
-            if (event.type === 'boolean' && (eventValue.value === 'true' || eventValue.value === '1')) {
-              dayStats[dayIndex].completed++;
-            } else if (event.type === 'number') {
-              const val = parseFloat(eventValue.value);
-              if (!isNaN(val) && val > 0) {
-                dayStats[dayIndex].completed++;
-              }
-            } else if (event.type === 'string' && eventValue.value && eventValue.value.trim() !== '') {
-              dayStats[dayIndex].completed++;
-            }
+          // Since valuesByDate only contains non-default values, if it exists, it's completed
+          const hasValue = dayValues.some(v => v.eventId === event.id);
+          if (hasValue) {
+            dayStats[dayIndex].completed++;
           }
         });
       }
@@ -565,76 +576,58 @@ export default function DashboardScreen() {
 
       setDayOfWeekStats(dowStats);
 
-      // Generate heatmap data (last 84 days = 12 weeks)
-      const heatmapDays = 84;
+      // Generate heatmap data (from first meaningful date up to 84 days)
+      const heatmapDays = Math.min(84, Math.ceil((today.getTime() - new Date(dataStartDate).getTime()) / (1000 * 60 * 60 * 24)));
       const heatmap: { date: string; count: number }[] = [];
+
       for (let i = heatmapDays - 1; i >= 0; i--) {
         const date = subDays(today, i);
         const dateStr = format(date, 'yyyy-MM-dd');
+
+        // Skip dates before first meaningful date
+        if (dateStr < dataStartDate) continue;
+
         const dayValues = valuesByDate[dateStr] || [];
 
-        let count = 0;
-        events.forEach(event => {
-          const eventValue = dayValues.find(v => v.eventId === event.id);
-          if (eventValue) {
-            if (event.type === 'boolean' && (eventValue.value === 'true' || eventValue.value === '1')) {
-              count++;
-            } else if (event.type === 'number') {
-              const val = parseFloat(eventValue.value);
-              if (!isNaN(val) && val > 0) {
-                count++;
-              }
-            } else if (event.type === 'string' && eventValue.value && eventValue.value.trim() !== '') {
-              count++;
-            }
-          }
-        });
+        // Since valuesByDate only contains non-default values, count is just the number of events with values
+        const count = dayValues.length;
 
         heatmap.push({ date: dateStr, count });
       }
       setHeatmapData(heatmap);
 
-      // Calculate stats for milestones - FIXED ALGORITHM
+      // Calculate stats for milestones - Optimized with non-default values only
       let maxStreak = 0;
       let totalEventCount = 0;
       let avgConsistency = 0;
       let trackingStreakValue = 0;
 
-      // Look at last 90 days for better streak detection
-      const milestoneDays = 90;
+      // Look from first meaningful date to today for milestone detection
+      const milestoneStartDate = dataStartDate;
+      const milestoneEndDate = format(today, 'yyyy-MM-dd');
+
+      // Calculate days in range
+      const milestoneDays = Math.ceil((today.getTime() - new Date(dataStartDate).getTime()) / (1000 * 60 * 60 * 24));
 
       // Track which days ALL events were completed (for tracking streak)
       const allEventsCompletedDays = new Set<string>();
 
       for (const event of events) {
-        // Get ACTUAL event values (not filled with defaults)
-        const allValues = await getAllEventValues();
-        const eventValues = allValues.filter(v => v.eventId === event.id);
+        // Get only non-default event values for this event in the date range
+        const eventValues = allNonDefaultValues.filter(v => v.eventId === event.id);
 
-        // Get date range to check
-        const startDate = format(subDays(today, milestoneDays - 1), 'yyyy-MM-dd');
-        const endDate = format(today, 'yyyy-MM-dd');
-        const valuesInRange = eventValues.filter(
-          v => v.date >= startDate && v.date <= endDate
-        );
+        // All values are already in the correct date range (dataStartDate to today)
 
         // Calculate CURRENT streak (consecutive days from today backwards)
         let currentStreak = 0;
         for (let i = 0; i < milestoneDays; i++) {
           const dateStr = format(subDays(today, i), 'yyyy-MM-dd');
-          const dayValue = valuesInRange.find(v => v.date === dateStr);
 
-          let hasValue = false;
-          if (dayValue) {
-            if (event.type === 'boolean') {
-              hasValue = dayValue.value === 'true' || dayValue.value === '1';
-            } else if (event.type === 'number') {
-              const val = parseFloat(dayValue.value as string);
-              hasValue = !isNaN(val) && val > 0;
-            } else {
-              hasValue = Boolean(dayValue.value && String(dayValue.value).trim() !== '');
-            }
-          }
+          // Skip if before first meaningful date
+          if (dateStr < dataStartDate) break;
+
+          // Since eventValues only contains non-default values, just check if value exists
+          const hasValue = eventValues.some(v => v.date === dateStr);
 
           if (hasValue) {
             currentStreak++;
@@ -651,19 +644,12 @@ export default function DashboardScreen() {
         // Check all days to find best historical streak
         for (let i = 0; i < milestoneDays; i++) {
           const dateStr = format(subDays(today, i), 'yyyy-MM-dd');
-          const dayValue = valuesInRange.find(v => v.date === dateStr);
 
-          let hasValue = false;
-          if (dayValue) {
-            if (event.type === 'boolean') {
-              hasValue = dayValue.value === 'true' || dayValue.value === '1';
-            } else if (event.type === 'number') {
-              const val = parseFloat(dayValue.value as string);
-              hasValue = !isNaN(val) && val > 0;
-            } else {
-              hasValue = Boolean(dayValue.value && String(dayValue.value).trim() !== '');
-            }
-          }
+          // Skip if before first meaningful date
+          if (dateStr < dataStartDate) break;
+
+          // Since eventValues only contains non-default values, just check if value exists
+          const hasValue = eventValues.some(v => v.date === dateStr);
 
           if (hasValue) {
             tempStreak++;
@@ -678,53 +664,28 @@ export default function DashboardScreen() {
 
         maxStreak = Math.max(maxStreak, bestStreak);
 
-        // Count total DAYS with events (consistent across all types)
-        totalEventCount += valuesInRange.filter(v => {
-          if (event.type === 'boolean') {
-            return v.value === 'true' || v.value === '1';
-          } else if (event.type === 'number') {
-            const val = parseFloat(v.value as string);
-            return !isNaN(val) && val > 0;
-          } else {
-            return Boolean(v.value && String(v.value).trim() !== '');
-          }
-        }).length;
+        // Count total DAYS with non-default events
+        totalEventCount += eventValues.length;
 
-        // Calculate ACTUAL consistency (days with data / total days checked)
-        const daysWithData = valuesInRange.length;
+        // Calculate ACTUAL consistency (days with non-default data / total days checked)
+        const daysWithData = eventValues.length;
         avgConsistency += (daysWithData / milestoneDays) * 100;
       }
 
       avgConsistency = events.length > 0 ? avgConsistency / events.length : 0;
 
-      // Calculate tracking streak (days where ALL events were tracked)
+      // Calculate tracking streak (days where ALL events have non-default values)
       if (events.length > 0) {
         for (let i = 0; i < milestoneDays; i++) {
           const dateStr = format(subDays(today, i), 'yyyy-MM-dd');
 
-          // Check if all events have values for this day
-          let allEventsTracked = true;
-          for (const event of events) {
-            const allValues = await getAllEventValues();
-            const dayValue = allValues.find(v => v.eventId === event.id && v.date === dateStr);
+          // Skip if before first meaningful date
+          if (dateStr < dataStartDate) break;
 
-            let hasValue = false;
-            if (dayValue) {
-              if (event.type === 'boolean') {
-                hasValue = dayValue.value === 'true' || dayValue.value === '1';
-              } else if (event.type === 'number') {
-                const val = parseFloat(dayValue.value as string);
-                hasValue = !isNaN(val) && val > 0;
-              } else {
-                hasValue = Boolean(dayValue.value && String(dayValue.value).trim() !== '');
-              }
-            }
-
-            if (!hasValue) {
-              allEventsTracked = false;
-              break;
-            }
-          }
+          // Check if all events have non-default values for this day
+          const allEventsTracked = events.every(event => {
+            return allNonDefaultValues.some(v => v.eventId === event.id && v.date === dateStr);
+          });
 
           if (allEventsTracked) {
             trackingStreakValue++;
