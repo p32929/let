@@ -115,6 +115,27 @@ export default function DashboardScreen() {
 
         const allData = await Promise.all(dataPromises);
         setEventData(allData);
+
+        // Auto-select time range based on available data
+        const allDates = allData.flatMap(d => d.dataPoints.map(p => p.date));
+        if (allDates.length > 0) {
+          const dates = allDates.map(d => new Date(d));
+          const earliest = new Date(Math.min(...dates.map(d => d.getTime())));
+          const latest = new Date(Math.max(...dates.map(d => d.getTime())));
+          const daySpan = Math.ceil((latest.getTime() - earliest.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+          // Auto-select appropriate time range
+          if (daySpan <= 7) {
+            setTimeRange('7d');
+          } else if (daySpan <= 30) {
+            setTimeRange('30d');
+          } else if (daySpan <= 90) {
+            setTimeRange('90d');
+          } else {
+            setTimeRange('365d');
+          }
+        }
+
         setIsLoading(false);
 
         // Discover patterns from ALL data with loading state
@@ -186,18 +207,19 @@ export default function DashboardScreen() {
     if (!primaryData) return [];
 
     const numericValues = primaryData.dataPoints
-      .filter(d => typeof d.value === 'number' && d.value > 0)
+      .filter(d => typeof d.value === 'number')  // Include 0 values - they are meaningful!
       .map(d => ({ date: d.date, value: d.value as number }));
 
-    // Require at least 3 days of data for pattern discovery
-    if (numericValues.length < 3) return [];
+    // Require at least 2 days of data for pattern discovery
+    if (numericValues.length < 2) return [];
 
     const values = numericValues.map(d => d.value);
     const min = Math.min(...values);
     const max = Math.max(...values);
     const range = max - min;
 
-    if (range < 1) return [];
+    // If all values are the same, no patterns to discover
+    if (range === 0) return [];
 
     // Check if all values are integers
     const allIntegers = values.every(v => Number.isInteger(v));
