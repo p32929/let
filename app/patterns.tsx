@@ -724,9 +724,9 @@ export default function DashboardScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator>
               <View
                 ref={chartRef}
-                style={{ width: Math.max(screenWidth - 32, combinedChartData.length * 50), height: 280 }}
+                style={{ width: Math.max(screenWidth - 32, combinedChartData.length * 50) + 30, height: 280 }}
               >
-                <Svg width={Math.max(screenWidth - 32, combinedChartData.length * 50)} height={280}>
+                <Svg width={Math.max(screenWidth - 32, combinedChartData.length * 50) + 30} height={280}>
                   <G>
                     {/* Render lines for numeric/boolean events */}
                     {numericEvents.map(({ event }) => {
