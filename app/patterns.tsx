@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getEventValuesForDateRangeComplete } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
 import type { Event } from '@/types/events';
-import { isPlaceholderValue } from '@/lib/data-optimization';
+import { isDefaultValue } from '@/lib/data-optimization';
 import { Copy } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -94,10 +94,10 @@ export default function DashboardScreen() {
         const dataPromises = events.map(async (event) => {
           const values = await getEventValuesForDateRangeComplete(event.id, startStr, endStr, event.type);
 
-          // Filter out placeholder values (id === -1 means not actually tracked)
-          const trackedValues = values.filter(v => !isPlaceholderValue(v));
+          // Filter out default values for pattern detection
+          const nonDefaultValues = values.filter(v => !isDefaultValue(v.value, event.type));
 
-          const dataPoints: EventDataPoint[] = trackedValues.map((v) => ({
+          const dataPoints: EventDataPoint[] = nonDefaultValues.map((v) => ({
             date: v.date,
             value: event.type === 'string'
               ? v.value
@@ -115,27 +115,6 @@ export default function DashboardScreen() {
 
         const allData = await Promise.all(dataPromises);
         setEventData(allData);
-
-        // Auto-select time range based on available data
-        const allDates = allData.flatMap(d => d.dataPoints.map(p => p.date));
-        if (allDates.length > 0) {
-          const dates = allDates.map(d => new Date(d));
-          const earliest = new Date(Math.min(...dates.map(d => d.getTime())));
-          const latest = new Date(Math.max(...dates.map(d => d.getTime())));
-          const daySpan = Math.ceil((latest.getTime() - earliest.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-
-          // Auto-select appropriate time range
-          if (daySpan <= 7) {
-            setTimeRange('7d');
-          } else if (daySpan <= 30) {
-            setTimeRange('30d');
-          } else if (daySpan <= 90) {
-            setTimeRange('90d');
-          } else {
-            setTimeRange('365d');
-          }
-        }
-
         setIsLoading(false);
 
         // Discover patterns from ALL data with loading state
@@ -207,57 +186,39 @@ export default function DashboardScreen() {
     if (!primaryData) return [];
 
     const numericValues = primaryData.dataPoints
-      .filter(d => typeof d.value === 'number')  // Include 0 values - they are meaningful!
+      .filter(d => typeof d.value === 'number' && d.value > 0)
       .map(d => ({ date: d.date, value: d.value as number }));
 
-    // Require at least 2 days of data for pattern discovery
-    if (numericValues.length < 2) return [];
+    if (numericValues.length < 10) return [];
 
     const values = numericValues.map(d => d.value);
     const min = Math.min(...values);
     const max = Math.max(...values);
     const range = max - min;
 
-    // If all values are the same, no patterns to discover
-    if (range === 0) return [];
+    if (range < 1) return [];
 
     // Check if all values are integers
     const allIntegers = values.every(v => Number.isInteger(v));
 
-    // Use 2 buckets for small datasets (2-5 data points), 3 buckets for larger
-    // This ensures each bucket has enough data points for meaningful patterns
-    const useTwoBuckets = numericValues.length < 6;
-
-    let buckets: { name: string; min: number; max: number; dates: string[] }[];
-
-    if (useTwoBuckets) {
-      // 2 buckets: low/high (for small datasets)
-      const bucketSize = range / 2;
-      const midpoint = min + bucketSize;
-      buckets = [
-        { name: 'low', min, max: midpoint, dates: [] as string[] },
-        { name: 'high', min: midpoint, max: max + 0.01, dates: [] as string[] },
-      ];
-    } else {
-      // 3 buckets: low/mid/high (for larger datasets)
-      const bucketSize = range / 3;
-      const lowCutoff = min + bucketSize;
-      const midCutoff = min + (bucketSize * 2);
-      buckets = [
-        { name: 'low', min, max: lowCutoff, dates: [] as string[] },
-        { name: 'mid', min: lowCutoff, max: midCutoff, dates: [] as string[] },
-        { name: 'high', min: midCutoff, max: max + 0.01, dates: [] as string[] },
-      ];
-    }
+    // Create 3 buckets based on the FIRST event
+    const bucketSize = range / 3;
+    const buckets = allIntegers ? [
+      // For integer data, round bucket boundaries to integers
+      { name: 'low', min: Math.floor(min), max: Math.ceil(min + bucketSize), dates: [] as string[] },
+      { name: 'mid', min: Math.ceil(min + bucketSize), max: Math.ceil(min + (bucketSize * 2)), dates: [] as string[] },
+      { name: 'high', min: Math.ceil(min + (bucketSize * 2)), max: Math.ceil(max), dates: [] as string[] },
+    ] : [
+      // For decimal data, keep precise boundaries
+      { name: 'low', min, max: min + bucketSize, dates: [] as string[] },
+      { name: 'mid', min: min + bucketSize, max: min + (bucketSize * 2), dates: [] as string[] },
+      { name: 'high', min: min + (bucketSize * 2), max, dates: [] as string[] },
+    ];
 
     for (const { date, value } of numericValues) {
-      if (value < buckets[0].max) {
-        buckets[0].dates.push(date);
-      } else if (buckets.length > 2 && value < buckets[1].max) {
-        buckets[1].dates.push(date);
-      } else {
-        buckets[buckets.length - 1].dates.push(date);
-      }
+      if (value < buckets[0].max) buckets[0].dates.push(date);
+      else if (value < buckets[1].max) buckets[1].dates.push(date);
+      else buckets[2].dates.push(date);
     }
 
     // Store pattern data for each bucket with full details
@@ -282,12 +243,8 @@ export default function DashboardScreen() {
     const bucketPatterns: BucketPattern[] = [];
 
     // For each bucket, build detailed pattern data
-    // For small datasets (2 buckets), allow single data point per bucket
-    // For larger datasets (3 buckets), require at least 2 points per bucket
-    const minBucketSize = useTwoBuckets ? 1 : 2;
-
     for (const bucket of buckets) {
-      if (bucket.dates.length < minBucketSize) continue;
+      if (bucket.dates.length < 2) continue;
 
       const parts: BucketPattern['parts'] = [];
       const relatedEvents: Event[] = [];
@@ -303,9 +260,6 @@ export default function DashboardScreen() {
         if (event.type === 'boolean') {
           const trueCount = matchingData.filter(d => d && (d.value === 'true' || d.value === 1)).length;
           const rate = (trueCount / matchingData.length) * 100;
-
-          // Skip constant boolean values (always 100% or always 0%) - not useful patterns
-          if (rate === 100 || rate === 0) continue;
 
           parts.push({
             eventName: event.name,
@@ -509,13 +463,7 @@ export default function DashboardScreen() {
       }
 
       if (mergedParts.length >= 1) {
-        // Calculate real confidence based on sample size and consistency
-        // Higher sample size = higher confidence, capped at reasonable levels
-        const baseConfidence = Math.min(85, 40 + (totalSampleSize / allData.length) * 30);
-        // Bonus for more related events (more parts)
-        const partsBonus = Math.min(10, mergedParts.length * 3);
-        const confidence = Math.min(95, baseConfidence + partsBonus);
-
+        const confidence = Math.min(95, 50 + mergedParts.length * 5);
         mergedPatterns.push({
           description: mergedParts.join(' → '),
           confidence,
