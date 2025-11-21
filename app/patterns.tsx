@@ -4,7 +4,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Icon } from '@/components/ui/icon';
 import { Stack, router } from 'expo-router';
 import * as React from 'react';
-import { View, ScrollView, Dimensions, Pressable, Modal, TouchableWithoutFeedback } from 'react-native';
+import { View, ScrollView, Dimensions, Pressable, TouchableWithoutFeedback } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getEventValuesForDateRangeComplete } from '@/db/operations/events';
@@ -705,20 +705,10 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Tooltip Modal - renders on top of everything */}
-        <Modal
-          visible={tooltipPos !== null && tooltipPos.visible}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setTooltipPos(null)}
-        >
+        {/* Tooltip Overlay - renders on top of everything */}
+        {tooltipPos !== null && tooltipPos.visible && (
           <Pressable
-            style={{
-              flex: 1,
-              backgroundColor: 'rgba(0, 0, 0, 0.5)',
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
+            className="absolute inset-0 bg-black/50 items-center justify-center z-[100]"
             onPress={() => setTooltipPos(null)}
           >
             {tooltipPos && (
@@ -772,7 +762,7 @@ export default function DashboardScreen() {
               </View>
             )}
           </Pressable>
-        </Modal>
+        )}
       </View>
     );
   };

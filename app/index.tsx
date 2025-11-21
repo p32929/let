@@ -23,7 +23,6 @@ import { logError } from '@/lib/error-tracker';
 import {
   AlertDialog,
   AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -59,8 +58,7 @@ export default function HomeScreen() {
   // Check if any modal/dialog is showing (excluding menu - menu shouldn't block header buttons)
   const isAnyDialogShowing = loadingSampleData || isResetting || importingData ||
     showCalendar || showImportDialog || showResetDialog ||
-    showNoEventsDialog || showSampleDataDialog || showExportSuccessDialog ||
-    showExportErrorDialog || showImportErrorDialog;
+    showNoEventsDialog || showSampleDataDialog;
 
   // Check if any blocking dialog is showing (includes menu for other UI elements)
   const isBlockingDialogShowing = isAnyDialogShowing || showMenu;
@@ -255,13 +253,10 @@ export default function HomeScreen() {
       });
 
       if (result.success) {
-        // Close dialog immediately on success
+        setImportMessage('Reloading events...');
+        await loadEvents();
         setShowImportDialog(false);
         setClearExisting(false);
-        setImportingData(false);
-
-        // Reload events in background
-        await loadEvents();
       } else {
         setImportMessage(`Error: ${result.message}`);
       }
@@ -817,9 +812,6 @@ export default function HomeScreen() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onPress={() => setShowExportErrorDialog(false)}>
-              <Text>OK</Text>
-            </AlertDialogCancel>
             <AlertDialogAction
               onPress={() => {
                 setShowExportErrorDialog(false);
@@ -827,6 +819,9 @@ export default function HomeScreen() {
               }}
             >
               <Text>View Reports</Text>
+            </AlertDialogAction>
+            <AlertDialogAction onPress={() => setShowExportErrorDialog(false)}>
+              <Text>OK</Text>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -842,9 +837,6 @@ export default function HomeScreen() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onPress={() => setShowImportErrorDialog(false)}>
-              <Text>OK</Text>
-            </AlertDialogCancel>
             <AlertDialogAction
               onPress={() => {
                 setShowImportErrorDialog(false);
@@ -853,6 +845,9 @@ export default function HomeScreen() {
               }}
             >
               <Text>View Reports</Text>
+            </AlertDialogAction>
+            <AlertDialogAction onPress={() => setShowImportErrorDialog(false)}>
+              <Text>OK</Text>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

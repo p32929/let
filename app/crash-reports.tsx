@@ -12,7 +12,6 @@ import {
 } from 'lucide-react-native';
 import * as React from 'react';
 import { View, ScrollView, Pressable } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,6 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getErrorReports,
   clearErrorReports,
@@ -75,13 +75,13 @@ export default function CrashReportsScreen() {
     setShowDeleteDialog(true);
   };
 
-  const confirmDeleteReport = async () => {
+  const confirmDelete = async () => {
     if (reportToDelete) {
       await deleteErrorReport(reportToDelete);
       await loadReports();
       setReportToDelete(null);
+      setShowDeleteDialog(false);
     }
-    setShowDeleteDialog(false);
   };
 
   const handleCopyReport = async (report: ErrorReport) => {
@@ -321,7 +321,7 @@ export default function CrashReportsScreen() {
             <AlertDialogCancel onPress={() => setShowDeleteDialog(false)}>
               <Text>Cancel</Text>
             </AlertDialogCancel>
-            <AlertDialogAction onPress={confirmDeleteReport}>
+            <AlertDialogAction onPress={confirmDelete}>
               <Text>Delete</Text>
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -334,7 +334,7 @@ export default function CrashReportsScreen() {
           <AlertDialogHeader>
             <AlertDialogTitle>Copied</AlertDialogTitle>
             <AlertDialogDescription>
-              Error report copied to clipboard
+              Error report copied to clipboard.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -351,7 +351,7 @@ export default function CrashReportsScreen() {
           <AlertDialogHeader>
             <AlertDialogTitle>Error</AlertDialogTitle>
             <AlertDialogDescription>
-              Failed to share error reports
+              Failed to share error reports.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
