@@ -233,24 +233,20 @@ export default function DashboardScreen() {
     if (useTwoBuckets) {
       // 2 buckets: low/high (for small datasets)
       const bucketSize = range / 2;
-      buckets = allIntegers ? [
-        { name: 'low', min: Math.floor(min), max: Math.ceil(min + bucketSize), dates: [] as string[] },
-        { name: 'high', min: Math.ceil(min + bucketSize), max: Math.ceil(max), dates: [] as string[] },
-      ] : [
-        { name: 'low', min, max: min + bucketSize, dates: [] as string[] },
-        { name: 'high', min: min + bucketSize, max, dates: [] as string[] },
+      const midpoint = min + bucketSize;
+      buckets = [
+        { name: 'low', min, max: midpoint, dates: [] as string[] },
+        { name: 'high', min: midpoint, max: max + 0.01, dates: [] as string[] },
       ];
     } else {
       // 3 buckets: low/mid/high (for larger datasets)
       const bucketSize = range / 3;
-      buckets = allIntegers ? [
-        { name: 'low', min: Math.floor(min), max: Math.ceil(min + bucketSize), dates: [] as string[] },
-        { name: 'mid', min: Math.ceil(min + bucketSize), max: Math.ceil(min + (bucketSize * 2)), dates: [] as string[] },
-        { name: 'high', min: Math.ceil(min + (bucketSize * 2)), max: Math.ceil(max), dates: [] as string[] },
-      ] : [
-        { name: 'low', min, max: min + bucketSize, dates: [] as string[] },
-        { name: 'mid', min: min + bucketSize, max: min + (bucketSize * 2), dates: [] as string[] },
-        { name: 'high', min: min + (bucketSize * 2), max, dates: [] as string[] },
+      const lowCutoff = min + bucketSize;
+      const midCutoff = min + (bucketSize * 2);
+      buckets = [
+        { name: 'low', min, max: lowCutoff, dates: [] as string[] },
+        { name: 'mid', min: lowCutoff, max: midCutoff, dates: [] as string[] },
+        { name: 'high', min: midCutoff, max: max + 0.01, dates: [] as string[] },
       ];
     }
 
@@ -307,6 +303,9 @@ export default function DashboardScreen() {
         if (event.type === 'boolean') {
           const trueCount = matchingData.filter(d => d && (d.value === 'true' || d.value === 1)).length;
           const rate = (trueCount / matchingData.length) * 100;
+
+          // Skip constant boolean values (always 100% or always 0%) - not useful patterns
+          if (rate === 100 || rate === 0) continue;
 
           parts.push({
             eventName: event.name,
@@ -510,7 +509,13 @@ export default function DashboardScreen() {
       }
 
       if (mergedParts.length >= 1) {
-        const confidence = Math.min(95, 50 + mergedParts.length * 5);
+        // Calculate real confidence based on sample size and consistency
+        // Higher sample size = higher confidence, capped at reasonable levels
+        const baseConfidence = Math.min(85, 40 + (totalSampleSize / allData.length) * 30);
+        // Bonus for more related events (more parts)
+        const partsBonus = Math.min(10, mergedParts.length * 3);
+        const confidence = Math.min(95, baseConfidence + partsBonus);
+
         mergedPatterns.push({
           description: mergedParts.join(' → '),
           confidence,
