@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getEventValuesForDateRangeComplete } from '@/db/operations/events';
 import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, differenceInDays, getDay, subMonths, addDays, isSameMonth, getDaysInMonth } from 'date-fns';
 import type { Event } from '@/types/events';
-import { isDefaultValue } from '@/lib/data-optimization';
+import { isPlaceholderValue } from '@/lib/data-optimization';
 import { TrendingUpIcon, TrendingDownIcon, TargetIcon, CalendarIcon, AwardIcon, ActivityIcon, CheckCircle2Icon, ZapIcon, TrophyIcon, SparklesIcon, FlameIcon, AlertCircleIcon } from 'lucide-react-native';
 import Svg, { Rect, Line as SvgLine, Circle, Path, Text as SvgText } from 'react-native-svg';
 
@@ -363,15 +363,11 @@ export default function DashboardScreen() {
 
       const allEventValuesArrays = await Promise.all(allEventValuesPromises);
 
-      // Flatten and filter out default values
+      // Flatten and filter out placeholder values (id === -1 means not actually tracked)
       const allValues = allEventValuesArrays.flat();
-      const nonDefaultValues = allValues.filter(val => {
-        const event = events.find(e => e.id === val.eventId);
-        if (!event) return false;
-        return !isDefaultValue(val.value, event.type);
-      });
+      const trackedValues = allValues.filter(val => !isPlaceholderValue(val));
 
-      const valuesByDate = nonDefaultValues.reduce((acc, val) => {
+      const valuesByDate = trackedValues.reduce((acc, val) => {
         if (!acc[val.date]) acc[val.date] = [];
         acc[val.date].push(val);
         return acc;
@@ -594,7 +590,7 @@ export default function DashboardScreen() {
 
       for (const event of events) {
         // Get only non-default event values for this event
-        const eventValues = nonDefaultValues.filter(v => v.eventId === event.id);
+        const eventValues = trackedValues.filter(v => v.eventId === event.id);
 
         // Calculate CURRENT streak (consecutive days from today backwards)
         let currentStreak = 0;
@@ -643,7 +639,7 @@ export default function DashboardScreen() {
           const dateStr = format(subDays(today, i), 'yyyy-MM-dd');
 
           const allEventsTracked = events.every(event => {
-            return nonDefaultValues.some(v => v.eventId === event.id && v.date === dateStr);
+            return trackedValues.some(v => v.eventId === event.id && v.date === dateStr);
           });
 
           if (allEventsTracked) {

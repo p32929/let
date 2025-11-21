@@ -1,16 +1,18 @@
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Stack } from 'expo-router';
+import { Icon } from '@/components/ui/icon';
+import { Stack, router } from 'expo-router';
 import * as React from 'react';
-import { View, ScrollView, Dimensions, Pressable, Modal } from 'react-native';
+import { View, ScrollView, Dimensions, Pressable } from 'react-native';
 import { useEventsStore } from '@/lib/stores/events-store';
-import { getEventValuesForDateRange } from '@/db/operations/events';
-import { format, subDays, parseISO } from 'date-fns';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getEventValuesForDateRangeComplete } from '@/db/operations/events';
+import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, differenceInDays, getDay, subMonths, addDays, isSameMonth, getDaysInMonth } from 'date-fns';
 import type { Event } from '@/types/events';
-
-// React Native SVG - True cross-platform charting
-import Svg, { Line as SvgLine, Circle, G } from 'react-native-svg';
+import { isDefaultValue } from '@/lib/data-optimization';
+import { TrendingUpIcon, TrendingDownIcon, TargetIcon, CalendarIcon, AwardIcon, ActivityIcon, CheckCircle2Icon, ZapIcon, TrophyIcon, SparklesIcon, FlameIcon, AlertCircleIcon } from 'lucide-react-native';
+import Svg, { Rect, Line as SvgLine, Circle, Path, Text as SvgText } from 'react-native-svg';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -19,1465 +21,1473 @@ interface EventDataPoint {
   value: number | string;
 }
 
-interface Pattern {
+interface SummaryStats {
+  eventName: string;
+  eventType: 'boolean' | 'number' | 'string';
+  color: string;
+  unit?: string;
+  average?: number;
+  total?: number;
+  completionRate?: number;
+  currentStreak?: number;
+  bestStreak?: number;
+  mostCommon?: string;
+  trendData?: number[]; // For sparkline
+  consistency?: number; // Percentage of days tracked
+}
+
+interface WeekComparison {
+  eventName: string;
+  eventType: 'boolean' | 'number' | 'string';
+  color: string;
+  lastWeekAvg?: number;
+  thisWeekAvg?: number;
+  change?: number;
+  changePercent?: number;
+  trend: 'up' | 'down' | 'stable';
+}
+
+interface MonthComparison {
+  eventName: string;
+  eventType: 'boolean' | 'number' | 'string';
+  color: string;
+  lastMonthAvg?: number;
+  thisMonthAvg?: number;
+  change?: number;
+  changePercent?: number;
+  trend: 'up' | 'down' | 'stable';
+}
+
+interface DayOfWeekStats {
+  day: string;
+  dayIndex: number;
+  completionRate: number;
+}
+
+interface TopCorrelation {
   description: string;
-  confidence: number; // 0-100%
-  type: 'threshold' | 'co-occurrence' | 'sequence';
+  confidence: number;
   events: Event[];
 }
 
-type TimeRange = '7d' | '30d' | '90d' | '365d';
+interface Milestone {
+  title: string;
+  description: string;
+  icon: any;
+  color: string;
+  achieved: boolean;
+}
+
+interface RecommendedAction {
+  action: string;
+  reason: string;
+  confidence: number;
+}
+
+// Simple sparkline component
+const Sparkline = ({ data, width = 60, height = 20, color = '#3b82f6' }: { data: number[]; width?: number; height?: number; color?: string }) => {
+  if (data.length < 2) return null;
+
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+
+  const points = data.map((value, index) => {
+    const x = (index / (data.length - 1)) * width;
+    const y = height - ((value - min) / range) * height;
+    return `${x},${y}`;
+  }).join(' ');
+
+  return (
+    <Svg width={width} height={height}>
+      <Path
+        d={`M ${points}`}
+        stroke={color}
+        strokeWidth="2"
+        fill="none"
+      />
+    </Svg>
+  );
+};
+
+// Heatmap component
+const ActivityHeatmap = ({ data }: { data: { date: string; count: number }[] }) => {
+  const cellSize = 12;
+  const cellGap = 3;
+  const weeksToShow = 12;
+
+  // Group by weeks
+  const weeks: { date: string; count: number }[][] = [];
+  let currentWeek: { date: string; count: number }[] = [];
+
+  data.forEach((day, index) => {
+    currentWeek.push(day);
+    if (currentWeek.length === 7 || index === data.length - 1) {
+      weeks.push([...currentWeek]);
+      currentWeek = [];
+    }
+  });
+
+  const displayWeeks = weeks.slice(-weeksToShow);
+  const maxCount = Math.max(...data.map(d => d.count), 1);
+
+  const getColor = (count: number) => {
+    if (count === 0) return '#e5e5e5';
+    const intensity = count / maxCount;
+    if (intensity > 0.75) return '#22c55e';
+    if (intensity > 0.5) return '#84cc16';
+    if (intensity > 0.25) return '#fbbf24';
+    return '#f97316';
+  };
+
+  const svgWidth = displayWeeks.length * (cellSize + cellGap);
+  const svgHeight = 7 * (cellSize + cellGap);
+
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <Svg width={svgWidth} height={svgHeight}>
+        {displayWeeks.map((week, weekIndex) => (
+          week.map((day, dayIndex) => (
+            <Rect
+              key={`${weekIndex}-${dayIndex}`}
+              x={weekIndex * (cellSize + cellGap)}
+              y={dayIndex * (cellSize + cellGap)}
+              width={cellSize}
+              height={cellSize}
+              fill={getColor(day.count)}
+              rx={2}
+            />
+          ))
+        ))}
+      </Svg>
+    </ScrollView>
+  );
+};
 
 export default function DashboardScreen() {
   const { events } = useEventsStore();
-  const [patterns, setPatterns] = React.useState<Pattern[]>([]);
-  const [eventData, setEventData] = React.useState<{ event: Event; dataPoints: EventDataPoint[] }[]>([]);
-  const [chartData, setChartData] = React.useState<{ event: Event; dataPoints: EventDataPoint[] }[]>([]);
+  const [summaryStats, setSummaryStats] = React.useState<SummaryStats[]>([]);
+  const [summaryStatsCache, setSummaryStatsCache] = React.useState<Record<string, SummaryStats[]>>({});
+  const [weekComparisons, setWeekComparisons] = React.useState<WeekComparison[]>([]);
+  const [monthComparisons, setMonthComparisons] = React.useState<MonthComparison[]>([]);
+  const [overallConsistency, setOverallConsistency] = React.useState(0);
+  const [trackingStreak, setTrackingStreak] = React.useState(0);
+  const [dayOfWeekStats, setDayOfWeekStats] = React.useState<DayOfWeekStats[]>([]);
+  const [heatmapData, setHeatmapData] = React.useState<{ date: string; count: number }[]>([]);
+  const [topCorrelations, setTopCorrelations] = React.useState<TopCorrelation[]>([]);
+  const [comparisonView, setComparisonView] = React.useState<'week' | 'month'>('week');
+  const [summaryView, setSummaryView] = React.useState<'7days' | '15days' | '1month' | '6months'>('7days');
+  const [milestones, setMilestones] = React.useState<Milestone[]>([]);
+  const [showAllMilestones, setShowAllMilestones] = React.useState(false);
+  const insets = useSafeAreaInsets();
+  const [recommendations, setRecommendations] = React.useState<RecommendedAction[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [isAnalyzingPatterns, setIsAnalyzingPatterns] = React.useState(false);
-  const [timeRange, setTimeRange] = React.useState<TimeRange>('30d');
+  const [isSummaryLoading, setIsSummaryLoading] = React.useState(false);
 
-  const getDaysForRange = (range: TimeRange): number => {
-    switch (range) {
-      case '7d': return 7;
-      case '30d': return 30;
-      case '90d': return 90;
-      case '365d': return 365;
-    }
-  };
-
-  // Load ALL data once for pattern detection
   React.useEffect(() => {
-    const loadAllData = async () => {
-      setIsLoading(true);
-      try {
-        const endDate = new Date();
-        const startDate = subDays(endDate, 365); // Load 1 year instead of 2 for faster performance
-        const startStr = format(startDate, 'yyyy-MM-dd');
-        const endStr = format(endDate, 'yyyy-MM-dd');
-
-        // Load all data for pattern detection
-        const dataPromises = events.map(async (event) => {
-          const values = await getEventValuesForDateRange(event.id, startStr, endStr);
-          const dataPoints: EventDataPoint[] = values.map((v) => ({
-            date: v.date,
-            value: event.type === 'string'
-              ? v.value
-              : event.type === 'boolean'
-                ? (v.value === 'true' ? 1 : 0)
-                : parseFloat(v.value) || 0,
-          }));
-          return { event, dataPoints };
-        });
-
-        const allData = await Promise.all(dataPromises);
-        setEventData(allData);
-        setIsLoading(false);
-
-        // Discover patterns from ALL data with loading state - run AFTER UI is ready
-        setIsAnalyzingPatterns(true);
-        // Use requestAnimationFrame for better performance
-        requestAnimationFrame(() => {
-          setTimeout(() => {
-            try {
-              const discoveredPatterns = discoverPatterns(allData);
-              setPatterns(discoveredPatterns);
-            } catch (error) {
-              console.error('Failed to discover patterns:', error);
-            } finally {
-              setIsAnalyzingPatterns(false);
-            }
-          }, 500); // Longer delay to let charts render first
-        });
-      } catch (error) {
-        console.error('Failed to analyze patterns:', error);
-        setIsLoading(false);
-      }
-    };
-
-    if (events.length > 0) {
-      loadAllData();
-    } else {
-      setIsLoading(false);
-    }
+    loadDashboardData();
   }, [events]);
 
-  // Filter chart data based on selected time range
   React.useEffect(() => {
-    if (eventData.length === 0) {
-      setChartData([]);
+    loadSummaryData();
+  }, [events, summaryView]);
+
+  const loadSummaryData = async () => {
+    if (events.length === 0) {
       return;
     }
 
-    const days = getDaysForRange(timeRange);
-    const cutoffDate = format(subDays(new Date(), days), 'yyyy-MM-dd');
-
-    const filteredChartData = eventData.map(({ event, dataPoints }) => ({
-      event,
-      dataPoints: dataPoints.filter((point) => point.date >= cutoffDate),
-    }));
-
-    setChartData(filteredChartData);
-  }, [eventData, timeRange]);
-
-  const discoverPatterns = (
-    allData: { event: Event; dataPoints: EventDataPoint[] }[]
-  ): Pattern[] => {
-    const stringEvents = allData.filter((d) => d.event.type === 'string');
-    const booleanEvents = allData.filter((d) => d.event.type === 'boolean');
-    const numberEvents = allData.filter((d) => d.event.type === 'number');
-
-    if (allData.length < 2) return [];
-
-    const MAX_PATTERNS = 30; // Reduced - we're merging patterns now
-
-    // SMART PATTERN DISCOVERY: Group and merge similar patterns
-    // Instead of showing 20 patterns, show 5-10 comprehensive merged patterns
-
-    const mergedPatterns: Pattern[] = [];
-
-    // STRATEGY 1: Group number ranges (e.g., Sleep 6-8h → ...)
-    // Find number ranges that lead to similar outcomes
-    for (const { event: numEvent, dataPoints: numData } of numberEvents) {
-      if (mergedPatterns.length >= MAX_PATTERNS) break;
-
-      const numericValues = numData
-        .filter(d => typeof d.value === 'number')
-        .map(d => ({ date: d.date, value: d.value as number }));
-
-      if (numericValues.length < 3) continue;
-
-      // Group dates by value ranges
-      const values = numericValues.map(d => d.value);
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      const range = max - min;
-
-      if (range < 1) continue; // Skip if no variation
-
-      // Create 3 buckets: low, mid, high
-      const bucketSize = range / 3;
-      const lowThreshold = min + bucketSize;
-      const highThreshold = min + (bucketSize * 2);
-
-      const lowDates = numericValues.filter(d => d.value < lowThreshold).map(d => d.date);
-      const midDates = numericValues.filter(d => d.value >= lowThreshold && d.value < highThreshold).map(d => d.date);
-      const highDates = numericValues.filter(d => d.value >= highThreshold).map(d => d.date);
-
-      // Analyze each range
-      for (const { rangeName, dates, rangeMin, rangeMax } of [
-        { rangeName: 'low', dates: lowDates, rangeMin: min, rangeMax: lowThreshold },
-        { rangeName: 'mid', dates: midDates, rangeMin: lowThreshold, rangeMax: highThreshold },
-        { rangeName: 'high', dates: highDates, rangeMin: highThreshold, rangeMax: max },
-      ]) {
-        if (dates.length < 2) continue;
-        if (mergedPatterns.length >= MAX_PATTERNS) break;
-
-        const outcomes: string[] = [];
-        const relatedEvents: Event[] = [numEvent];
-
-        // Check correlations with STRING events - AGGREGATE ALL VALUES
-        for (const { event: strEvent, dataPoints: strData } of stringEvents) {
-          const strValues = dates
-            .map(date => strData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'string')
-            .map(d => String(d!.value).trim().toLowerCase())
-            .filter(v => v);
-
-          if (strValues.length >= 2) {
-            // Calculate frequency distribution
-            const freq: Record<string, number> = {};
-            strValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
-            const total = strValues.length;
-
-            // Get top 3 values with percentages
-            const sortedValues = Object.entries(freq)
-              .map(([value, count]) => ({ value, pct: (count / total) * 100 }))
-              .filter(v => v.pct >= 15) // Only show if ≥15%
-              .sort((a, b) => b.pct - a.pct)
-              .slice(0, 3);
-
-            if (sortedValues.length > 0) {
-              relatedEvents.push(strEvent);
-              const valueStr = sortedValues
-                .map(v => `${v.value} (${v.pct.toFixed(0)}%)`)
-                .join(', ');
-              outcomes.push(`${strEvent.name}: ${valueStr}`);
-            }
-          }
-        }
-
-        // Check correlations with BOOLEAN events
-        for (const { event: boolEvent, dataPoints: boolData } of booleanEvents) {
-          const boolValues = dates
-            .map(date => boolData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          if (boolValues.length >= 2) {
-            const trueCount = boolValues.filter(v => v > 0.5).length;
-            const rate = (trueCount / boolValues.length) * 100;
-
-            // Only include if strong correlation (>70% or <30%)
-            if (rate >= 70) {
-              relatedEvents.push(boolEvent);
-              outcomes.push(rate >= 85 ? boolEvent.name : `${boolEvent.name} (${rate.toFixed(0)}%)`);
-            } else if (rate <= 30) {
-              relatedEvents.push(boolEvent);
-              outcomes.push(rate <= 15 ? `No ${boolEvent.name}` : `No ${boolEvent.name} (${(100 - rate).toFixed(0)}%)`);
-            }
-          }
-        }
-
-        // Check correlations with other NUMBER events
-        for (const { event: otherNum, dataPoints: otherData } of numberEvents) {
-          if (otherNum.id === numEvent.id) continue;
-
-          const otherValues = dates
-            .map(date => otherData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          if (otherValues.length >= 2) {
-            const avg = otherValues.reduce((a, b) => a + b, 0) / otherValues.length;
-            const minVal = Math.min(...otherValues);
-            const maxVal = Math.max(...otherValues);
-            const otherUnit = otherNum.unit ? ` ${otherNum.unit}` : '';
-
-            if (maxVal - minVal > 0.5) {
-              relatedEvents.push(otherNum);
-              outcomes.push(`${otherNum.name} ${minVal.toFixed(1)}-${maxVal.toFixed(1)}${otherUnit}`);
-            } else if (avg > 0.1) {
-              relatedEvents.push(otherNum);
-              outcomes.push(`${otherNum.name} ${avg.toFixed(1)}${otherUnit}`);
-            }
-          }
-        }
-
-        if (outcomes.length >= 2) { // Only show if at least 2 correlations
-          const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
-          const description = `${numEvent.name} ${rangeMin.toFixed(1)}-${rangeMax.toFixed(1)}${unit} → ${outcomes.join(' → ')}`;
-          mergedPatterns.push({
-            description,
-            confidence: Math.min(95, 65 + outcomes.length * 5),
-            type: 'co-occurrence',
-            events: relatedEvents,
-          });
-        }
-      }
+    // Check cache first
+    if (summaryStatsCache[summaryView]) {
+      setSummaryStats(summaryStatsCache[summaryView]);
+      return;
     }
 
-    // STRATEGY 2: Boolean-based patterns with aggregated string distributions
-    for (const { event: boolEvent, dataPoints: boolData } of booleanEvents) {
-      if (mergedPatterns.length >= MAX_PATTERNS) break;
+    setIsSummaryLoading(true);
 
-      const trueDates = boolData
-        .filter(d => typeof d.value === 'number' && d.value > 0.5)
-        .map(d => d.date);
+    try {
+      const today = new Date();
+      const daysToLoad = summaryView === '7days' ? 7
+        : summaryView === '15days' ? 15
+        : summaryView === '1month' ? 30
+        : 180; // 6 months
+      const startDate = format(subDays(today, daysToLoad - 1), 'yyyy-MM-dd');
+      const todayStr = format(today, 'yyyy-MM-dd');
 
-      const falseDates = boolData
-        .filter(d => typeof d.value === 'number' && d.value <= 0.5)
-        .map(d => d.date);
+      const allEventData = await Promise.all(
+        events.map(async (event) => {
+          const dataPoints = await getEventValuesForDateRangeComplete(
+            event.id,
+            startDate,
+            todayStr,
+            event.type
+          );
+          return { event, dataPoints };
+        })
+      );
 
-      // Analyze TRUE states
-      if (trueDates.length >= 2) {
-        const outcomes: string[] = [];
-        const relatedEvents: Event[] = [boolEvent];
+      // Calculate summary stats with trends
+      const stats: SummaryStats[] = allEventData.map(({ event, dataPoints }) => {
+        const stat: SummaryStats = {
+          eventName: event.name,
+          eventType: event.type,
+          color: event.color,
+          unit: event.unit || undefined,
+        };
 
-        // STRING events - show distribution
-        for (const { event: strEvent, dataPoints: strData } of stringEvents) {
-          const strValues = trueDates
-            .map(date => strData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'string')
-            .map(d => String(d!.value).trim().toLowerCase())
-            .filter(v => v);
+        if (event.type === 'boolean') {
+          const trueCount = dataPoints.filter(d => d.value === 'true' || d.value === '1').length;
+          stat.completionRate = dataPoints.length > 0 ? (trueCount / dataPoints.length) * 100 : 0;
 
-          if (strValues.length >= 2) {
-            const freq: Record<string, number> = {};
-            strValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
-            const total = strValues.length;
+          // Calculate streaks
+          let currentStreak = 0;
+          let bestStreak = 0;
+          let tempStreak = 0;
 
-            const sortedValues = Object.entries(freq)
-              .map(([value, count]) => ({ value, pct: (count / total) * 100 }))
-              .filter(v => v.pct >= 15)
-              .sort((a, b) => b.pct - a.pct)
-              .slice(0, 3);
-
-            if (sortedValues.length > 0) {
-              relatedEvents.push(strEvent);
-              const valueStr = sortedValues
-                .map(v => `${v.value} (${v.pct.toFixed(0)}%)`)
-                .join(', ');
-              outcomes.push(`${strEvent.name}: ${valueStr}`);
+          for (let i = dataPoints.length - 1; i >= 0; i--) {
+            if (dataPoints[i].value === 'true' || dataPoints[i].value === '1') {
+              tempStreak++;
+              if (i === dataPoints.length - 1 || currentStreak > 0) {
+                currentStreak = tempStreak;
+              }
+              bestStreak = Math.max(bestStreak, tempStreak);
+            } else {
+              if (i === dataPoints.length - 1) {
+                currentStreak = 0;
+              }
+              tempStreak = 0;
             }
           }
-        }
 
-        // NUMBER events
-        for (const { event: numEvent, dataPoints: numData } of numberEvents) {
-          const numValues = trueDates
-            .map(date => numData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
+          stat.currentStreak = currentStreak;
+          stat.bestStreak = bestStreak;
 
-          if (numValues.length >= 2) {
-            const avg = numValues.reduce((a, b) => a + b, 0) / numValues.length;
-            const minVal = Math.min(...numValues);
-            const maxVal = Math.max(...numValues);
-            const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
+          // Trend data for sparkline
+          const trendDays = Math.min(14, dataPoints.length);
+          const last14Days = dataPoints.slice(-trendDays);
+          stat.trendData = last14Days.map(d => (d.value === 'true' || d.value === '1') ? 1 : 0);
 
-            if (maxVal - minVal > 0.5) {
-              relatedEvents.push(numEvent);
-              outcomes.push(`${numEvent.name} ${minVal.toFixed(1)}-${maxVal.toFixed(1)}${unit}`);
-            } else if (avg > 0.1) {
-              relatedEvents.push(numEvent);
-              outcomes.push(`${numEvent.name} ${avg.toFixed(1)}${unit}`);
-            }
+          // Consistency: percentage of days with data
+          const trackedDays = dataPoints.filter(d => d.value === 'true' || d.value === 'false' || d.value === '1' || d.value === '0').length;
+          stat.consistency = dataPoints.length > 0 ? (trackedDays / dataPoints.length) * 100 : 0;
+        } else if (event.type === 'number') {
+          const numericValues = dataPoints
+            .map(d => parseFloat(d.value as string))
+            .filter(v => !isNaN(v) && v > 0);
+
+          if (numericValues.length > 0) {
+            const sum = numericValues.reduce((a, b) => a + b, 0);
+            stat.average = sum / numericValues.length;
+            stat.total = sum;
           }
-        }
 
-        // BOOLEAN events
-        for (const { event: otherBool, dataPoints: otherData } of booleanEvents) {
-          if (otherBool.id === boolEvent.id) continue;
-
-          const boolValues = trueDates
-            .map(date => otherData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          if (boolValues.length >= 2) {
-            const trueCount = boolValues.filter(v => v > 0.5).length;
-            const rate = (trueCount / boolValues.length) * 100;
-
-            if (rate >= 70) {
-              relatedEvents.push(otherBool);
-              outcomes.push(rate >= 85 ? otherBool.name : `${otherBool.name} (${rate.toFixed(0)}%)`);
-            } else if (rate <= 30) {
-              relatedEvents.push(otherBool);
-              outcomes.push(rate <= 15 ? `No ${otherBool.name}` : `No ${otherBool.name} (${(100 - rate).toFixed(0)}%)`);
-            }
-          }
-        }
-
-        if (outcomes.length >= 2) {
-          const description = `${boolEvent.name} → ${outcomes.join(' → ')}`;
-          mergedPatterns.push({
-            description,
-            confidence: Math.min(95, 65 + outcomes.length * 5),
-            type: 'co-occurrence',
-            events: relatedEvents,
+          // Trend data for sparkline
+          const trendDays = Math.min(14, dataPoints.length);
+          stat.trendData = dataPoints.slice(-trendDays).map(d => {
+            const val = parseFloat(d.value as string);
+            return isNaN(val) ? 0 : val;
           });
-        }
-      }
 
-      // Analyze FALSE states
-      if (falseDates.length >= 2) {
-        const outcomes: string[] = [];
-        const relatedEvents: Event[] = [boolEvent];
+          // Consistency
+          const trackedDays = dataPoints.filter(d => {
+            const val = parseFloat(d.value as string);
+            return !isNaN(val) && val >= 0;
+          }).length;
+          stat.consistency = dataPoints.length > 0 ? (trackedDays / dataPoints.length) * 100 : 0;
+        } else if (event.type === 'string') {
+          const stringValues = dataPoints
+            .map(d => d.value as string)
+            .filter(v => v && v.trim() !== '');
 
-        // STRING events
-        for (const { event: strEvent, dataPoints: strData } of stringEvents) {
-          const strValues = falseDates
-            .map(date => strData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'string')
-            .map(d => String(d!.value).trim().toLowerCase())
-            .filter(v => v);
+          if (stringValues.length > 0) {
+            const frequency = stringValues.reduce((acc, val) => {
+              acc[val] = (acc[val] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>);
 
-          if (strValues.length >= 2) {
-            const freq: Record<string, number> = {};
-            strValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
-            const total = strValues.length;
-
-            const sortedValues = Object.entries(freq)
-              .map(([value, count]) => ({ value, pct: (count / total) * 100 }))
-              .filter(v => v.pct >= 15)
-              .sort((a, b) => b.pct - a.pct)
-              .slice(0, 3);
-
-            if (sortedValues.length > 0) {
-              relatedEvents.push(strEvent);
-              const valueStr = sortedValues
-                .map(v => `${v.value} (${v.pct.toFixed(0)}%)`)
-                .join(', ');
-              outcomes.push(`${strEvent.name}: ${valueStr}`);
-            }
+            const mostCommon = Object.entries(frequency).sort((a, b) => b[1] - a[1])[0];
+            stat.mostCommon = mostCommon ? `${mostCommon[0]} (${mostCommon[1]}x)` : undefined;
           }
+
+          // Consistency
+          const trackedDays = dataPoints.filter(d => {
+            const val = d.value as string;
+            return val && val.trim() !== '';
+          }).length;
+          stat.consistency = dataPoints.length > 0 ? (trackedDays / dataPoints.length) * 100 : 0;
         }
 
-        // NUMBER events
-        for (const { event: numEvent, dataPoints: numData } of numberEvents) {
-          const numValues = falseDates
-            .map(date => numData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          if (numValues.length >= 2) {
-            const avg = numValues.reduce((a, b) => a + b, 0) / numValues.length;
-            const minVal = Math.min(...numValues);
-            const maxVal = Math.max(...numValues);
-            const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
-
-            if (maxVal - minVal > 0.5) {
-              relatedEvents.push(numEvent);
-              outcomes.push(`${numEvent.name} ${minVal.toFixed(1)}-${maxVal.toFixed(1)}${unit}`);
-            } else if (avg > 0.1) {
-              relatedEvents.push(numEvent);
-              outcomes.push(`${numEvent.name} ${avg.toFixed(1)}${unit}`);
-            }
-          }
-        }
-
-        // BOOLEAN events
-        for (const { event: otherBool, dataPoints: otherData } of booleanEvents) {
-          if (otherBool.id === boolEvent.id) continue;
-
-          const boolValues = falseDates
-            .map(date => otherData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          if (boolValues.length >= 2) {
-            const trueCount = boolValues.filter(v => v > 0.5).length;
-            const rate = (trueCount / boolValues.length) * 100;
-
-            if (rate >= 70) {
-              relatedEvents.push(otherBool);
-              outcomes.push(rate >= 85 ? otherBool.name : `${otherBool.name} (${rate.toFixed(0)}%)`);
-            } else if (rate <= 30) {
-              relatedEvents.push(otherBool);
-              outcomes.push(rate <= 15 ? `No ${otherBool.name}` : `No ${otherBool.name} (${(100 - rate).toFixed(0)}%)`);
-            }
-          }
-        }
-
-        if (outcomes.length >= 2) {
-          const description = `NOT ${boolEvent.name} → ${outcomes.join(' → ')}`;
-          mergedPatterns.push({
-            description,
-            confidence: Math.min(95, 65 + outcomes.length * 5),
-            type: 'co-occurrence',
-            events: relatedEvents,
-          });
-        }
-      }
-    }
-
-    return mergedPatterns.sort((a, b) => b.confidence - a.confidence);
-  };
-
-  const renderChart = () => {
-        const val = String(d.value).trim().toLowerCase();
-        if (val) valueFrequency[val] = (valueFrequency[val] || 0) + 1;
+        return stat;
       });
 
-      // Analyze each string value that appears at least once
-      const allValues = Object.entries(valueFrequency)
-        .filter(([_, count]) => count >= 1)
-        .map(([value]) => value);
+      setSummaryStats(stats);
+      setSummaryStatsCache(prev => ({ ...prev, [summaryView]: stats }));
+    } catch (error) {
+      console.error('Failed to load summary data:', error);
+    } finally {
+      setIsSummaryLoading(false);
+    }
+  };
 
-      for (const value of allValues) {
-        if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
-        // Find days with this string value
-        const matchingDates = stringData
-          .filter(d => String(d.value).trim().toLowerCase() === value)
-          .map(d => d.date);
-
-        if (matchingDates.length < 1) continue;
-
-        // Analyze ALL outcomes for this string value
-        const outcomes: string[] = [];
-        const relatedEvents: Event[] = [stringEvent];
-
-        // Other days (for comparison)
-        const otherDates = stringData
-          .filter(d => String(d.value).trim().toLowerCase() !== value && String(d.value).trim() !== '')
-          .map(d => d.date);
-
-        // Check EVERY number event
-        for (const { event: numEvent, dataPoints: numData } of numberEvents) {
-          const matchingValues = matchingDates
-            .map(date => numData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          const otherValues = otherDates.length > 0 ? otherDates
-            .map(date => numData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number) : [];
-
-          if (matchingValues.length > 0) {
-            const avgMatching = matchingValues.reduce((a, b) => a + b, 0) / matchingValues.length;
-            const minMatching = Math.min(...matchingValues);
-            const maxMatching = Math.max(...matchingValues);
-            const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
-
-            // Include if there's a difference OR if there's no comparison data
-            let shouldInclude = false;
-            if (otherValues.length > 0) {
-              const avgOther = otherValues.reduce((a, b) => a + b, 0) / otherValues.length;
-              const diff = Math.abs(avgMatching - avgOther);
-              const percentDiff = avgOther > 0 ? (diff / avgOther) * 100 : 0;
-              shouldInclude = percentDiff > 5 || diff > 0.5;
-            } else {
-              // No comparison data, include if value is meaningful (non-zero)
-              shouldInclude = avgMatching > 0.1;
-            }
-
-            if (shouldInclude) {
-              relatedEvents.push(numEvent);
-              if (maxMatching - minMatching > 0.5) {
-                outcomes.push(`${numEvent.name} ${minMatching.toFixed(1)}-${maxMatching.toFixed(1)}${unit}`);
-              } else {
-                outcomes.push(`${numEvent.name} ${avgMatching.toFixed(1)}${unit}`);
-              }
-            }
-          }
-        }
-
-        // Check EVERY boolean event
-        for (const { event: boolEvent, dataPoints: boolData } of booleanEvents) {
-          const matchingValues = matchingDates
-            .map(date => boolData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          const otherValues = otherDates.length > 0 ? otherDates
-            .map(date => boolData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number) : [];
-
-          if (matchingValues.length > 0) {
-            const matchingTrue = matchingValues.filter(v => v > 0.5).length;
-            const matchingRate = (matchingTrue / matchingValues.length) * 100;
-
-            let shouldInclude = false;
-            let outcomeText = '';
-
-            if (otherValues.length > 0) {
-              const otherTrue = otherValues.filter(v => v > 0.5).length;
-              const otherRate = (otherTrue / otherValues.length) * 100;
-              const diff = matchingRate - otherRate;
-
-              if (Math.abs(diff) > 10) {
-                shouldInclude = true;
-                relatedEvents.push(boolEvent);
-                if (diff > 0) {
-                  outcomeText = matchingRate >= 80
-                    ? boolEvent.name
-                    : `${boolEvent.name} ${matchingRate.toFixed(0)}%`;
-                } else {
-                  outcomeText = matchingRate <= 20
-                    ? `No ${boolEvent.name}`
-                    : `${boolEvent.name} ${matchingRate.toFixed(0)}%`;
-                }
-              }
-            } else {
-              // No comparison, include if rate is high or low
-              if (matchingRate >= 70) {
-                shouldInclude = true;
-                relatedEvents.push(boolEvent);
-                outcomeText = boolEvent.name;
-              } else if (matchingRate <= 30) {
-                shouldInclude = true;
-                relatedEvents.push(boolEvent);
-                outcomeText = `No ${boolEvent.name}`;
-              }
-            }
-
-            if (shouldInclude && outcomeText) {
-              outcomes.push(outcomeText);
-            }
-          }
-        }
-
-        // Create pattern with ALL correlated events
-        if (outcomes.length > 0) {
-          // Format as concise formula: "Dress color 'yellow' → Sleep 5-7h → Good day → ..."
-          const description = `${stringEvent.name} "${value}" → ${outcomes.join(' → ')}`;
-          patterns.push({
-            description,
-            confidence: Math.min(95, 65 + outcomes.length * 4),
-            type: 'co-occurrence',
-            events: relatedEvents,
-          });
-        }
-      }
+  const loadDashboardData = async () => {
+    if (events.length === 0) {
+      setIsLoading(false);
+      return;
     }
 
-    // 2. BOOLEAN-BASED PATTERNS: When a boolean is true/false, what else happens?
-    for (const { event: boolEvent, dataPoints: boolData } of booleanEvents) {
-      if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
-      if (boolData.length < 1) continue;
+    setIsLoading(true);
 
-      // Days when boolean is true
-      const trueDates = boolData
-        .filter(d => typeof d.value === 'number' && d.value > 0.5)
-        .map(d => d.date);
+    try {
+      const today = new Date();
 
-      // Days when boolean is false
-      const falseDates = boolData
-        .filter(d => typeof d.value === 'number' && d.value <= 0.5)
-        .map(d => d.date);
+      // Use last 90 days for all dashboard data (reasonable range)
+      const dataStartDate = format(subDays(today, 89), 'yyyy-MM-dd');
+      const todayStr = format(today, 'yyyy-MM-dd');
 
-      // Skip if we don't have data for either state
-      if (trueDates.length < 1 && falseDates.length < 1) continue;
+      // Get this week, last week, this month, last month dates
+      const thisWeekStart = format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      const thisWeekEnd = format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      const lastWeekStart = format(startOfWeek(subDays(today, 7), { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      const lastWeekEnd = format(endOfWeek(subDays(today, 7), { weekStartsOn: 1 }), 'yyyy-MM-dd');
 
-      // Analyze what happens when boolean is TRUE (if we have true dates)
-      if (trueDates.length >= 1) {
-        const trueOutcomes: string[] = [];
-        const trueRelatedEvents: Event[] = [boolEvent];
+      const thisMonthStart = format(startOfMonth(today), 'yyyy-MM-dd');
+      const thisMonthEnd = format(endOfMonth(today), 'yyyy-MM-dd');
+      const lastMonthStart = format(startOfMonth(subMonths(today, 1)), 'yyyy-MM-dd');
+      const lastMonthEnd = format(endOfMonth(subMonths(today, 1)), 'yyyy-MM-dd');
 
-        // Check number events
-        for (const { event: numEvent, dataPoints: numData } of numberEvents) {
-          if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
-          const trueValues = trueDates
-            .map(date => numData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
+      // Calculate tracking streak (consecutive days with ALL events tracked)
+      // Load last 90 days for each event and filter defaults
+      const allEventValuesPromises = events.map(async (event) =>
+        getEventValuesForDateRangeComplete(event.id, dataStartDate, todayStr, event.type)
+      );
 
-          const falseValues = falseDates.length > 0 ? falseDates
-            .map(date => numData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number) : [];
+      const allEventValuesArrays = await Promise.all(allEventValuesPromises);
 
-          if (trueValues.length > 0) {
-            const avgTrue = trueValues.reduce((a, b) => a + b, 0) / trueValues.length;
-            const minTrue = Math.min(...trueValues);
-            const maxTrue = Math.max(...trueValues);
-            const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
+      // Flatten and filter out default values
+      const allValues = allEventValuesArrays.flat();
+      const nonDefaultValues = allValues.filter(val => {
+        const event = events.find(e => e.id === val.eventId);
+        if (!event) return false;
+        return !isDefaultValue(val.value, event.type);
+      });
 
-            let shouldInclude = false;
-            if (falseValues.length > 0) {
-              const avgFalse = falseValues.reduce((a, b) => a + b, 0) / falseValues.length;
-              const diff = Math.abs(avgTrue - avgFalse);
-              const percentDiff = avgFalse > 0 ? (diff / avgFalse) * 100 : 0;
-              shouldInclude = percentDiff > 5 || diff > 0.5;
-            } else {
-              shouldInclude = avgTrue > 0.1;
+      const valuesByDate = nonDefaultValues.reduce((acc, val) => {
+        if (!acc[val.date]) acc[val.date] = [];
+        acc[val.date].push(val);
+        return acc;
+      }, {} as Record<string, any[]>);
+
+      // Calculate streak starting from today going backwards (max 30 days)
+      let streak = 0;
+
+      for (let i = 0; i < 30; i++) {
+        const dateStr = format(subDays(today, i), 'yyyy-MM-dd');
+        const dayValues = valuesByDate[dateStr] || [];
+
+        // Check if all events have non-default values for this day
+        const allTracked = events.every(event => {
+          return dayValues.some(v => v.eventId === event.id);
+        });
+
+        if (allTracked) {
+          if (i === 0 || streak > 0) {
+            streak++;
+          }
+        } else {
+          if (i === 0) break;
+          if (streak > 0) break;
+        }
+      }
+      setTrackingStreak(streak);
+
+      // Calculate week comparisons
+      const weekComps: WeekComparison[] = await Promise.all(
+        events
+          .filter(event => event.type !== 'string') // Filter out string events
+          .map(async (event) => {
+            const lastWeekData = await getEventValuesForDateRangeComplete(
+              event.id,
+              lastWeekStart,
+              lastWeekEnd,
+              event.type
+            );
+            const thisWeekData = await getEventValuesForDateRangeComplete(
+              event.id,
+              thisWeekStart,
+              thisWeekEnd,
+              event.type
+            );
+
+            const comparison: WeekComparison = {
+              eventName: event.name,
+              eventType: event.type,
+              color: event.color,
+              trend: 'stable',
+            };
+
+            if (event.type === 'boolean') {
+              const lastWeekTrue = lastWeekData.filter(d => d.value === 'true' || d.value === '1').length;
+              const thisWeekTrue = thisWeekData.filter(d => d.value === 'true' || d.value === '1').length;
+
+              comparison.lastWeekAvg = lastWeekData.length > 0 ? (lastWeekTrue / lastWeekData.length) * 100 : 0;
+              comparison.thisWeekAvg = thisWeekData.length > 0 ? (thisWeekTrue / thisWeekData.length) * 100 : 0;
+              comparison.change = comparison.thisWeekAvg - comparison.lastWeekAvg;
+              comparison.changePercent = comparison.lastWeekAvg > 0
+                ? (comparison.change / comparison.lastWeekAvg) * 100
+                : 0;
+            } else if (event.type === 'number') {
+              const lastWeekNums = lastWeekData
+                .map(d => parseFloat(d.value as string))
+                .filter(v => !isNaN(v) && v > 0);
+              const thisWeekNums = thisWeekData
+                .map(d => parseFloat(d.value as string))
+                .filter(v => !isNaN(v) && v > 0);
+
+              if (lastWeekNums.length > 0 && thisWeekNums.length > 0) {
+                comparison.lastWeekAvg = lastWeekNums.reduce((a, b) => a + b, 0) / lastWeekNums.length;
+                comparison.thisWeekAvg = thisWeekNums.reduce((a, b) => a + b, 0) / thisWeekNums.length;
+                comparison.change = comparison.thisWeekAvg - comparison.lastWeekAvg;
+                comparison.changePercent = comparison.lastWeekAvg > 0
+                  ? (comparison.change / comparison.lastWeekAvg) * 100
+                  : 0;
+              }
             }
 
-            if (shouldInclude) {
-              trueRelatedEvents.push(numEvent);
-              if (maxTrue - minTrue > 0.5) {
-                trueOutcomes.push(`${numEvent.name} ${minTrue.toFixed(1)}-${maxTrue.toFixed(1)}${unit}`);
+            // Determine trend
+            if (comparison.change !== undefined) {
+              if (Math.abs(comparison.change) < 0.01) {
+                comparison.trend = 'stable';
+              } else if (comparison.change > 0) {
+                comparison.trend = 'up';
               } else {
-                trueOutcomes.push(`${numEvent.name} ${avgTrue.toFixed(1)}${unit}`);
+                comparison.trend = 'down';
               }
             }
+
+            return comparison;
+          })
+      );
+      setWeekComparisons(weekComps);
+
+      // Calculate month comparisons
+      const monthComps: MonthComparison[] = await Promise.all(
+        events.map(async (event) => {
+          const lastMonthData = await getEventValuesForDateRangeComplete(
+            event.id,
+            lastMonthStart,
+            lastMonthEnd,
+            event.type
+          );
+          const thisMonthData = await getEventValuesForDateRangeComplete(
+            event.id,
+            thisMonthStart,
+            thisMonthEnd,
+            event.type
+          );
+
+          const comparison: MonthComparison = {
+            eventName: event.name,
+            eventType: event.type,
+            color: event.color,
+            trend: 'stable',
+          };
+
+          if (event.type === 'boolean') {
+            const lastMonthTrue = lastMonthData.filter(d => d.value === 'true' || d.value === '1').length;
+            const thisMonthTrue = thisMonthData.filter(d => d.value === 'true' || d.value === '1').length;
+
+            comparison.lastMonthAvg = lastMonthData.length > 0 ? (lastMonthTrue / lastMonthData.length) * 100 : 0;
+            comparison.thisMonthAvg = thisMonthData.length > 0 ? (thisMonthTrue / thisMonthData.length) * 100 : 0;
+            comparison.change = comparison.thisMonthAvg - comparison.lastMonthAvg;
+            comparison.changePercent = comparison.lastMonthAvg > 0
+              ? (comparison.change / comparison.lastMonthAvg) * 100
+              : 0;
+          } else if (event.type === 'number') {
+            const lastMonthNums = lastMonthData
+              .map(d => parseFloat(d.value as string))
+              .filter(v => !isNaN(v) && v > 0);
+            const thisMonthNums = thisMonthData
+              .map(d => parseFloat(d.value as string))
+              .filter(v => !isNaN(v) && v > 0);
+
+            if (lastMonthNums.length > 0 && thisMonthNums.length > 0) {
+              comparison.lastMonthAvg = lastMonthNums.reduce((a, b) => a + b, 0) / lastMonthNums.length;
+              comparison.thisMonthAvg = thisMonthNums.reduce((a, b) => a + b, 0) / thisMonthNums.length;
+              comparison.change = comparison.thisMonthAvg - comparison.lastMonthAvg;
+              comparison.changePercent = comparison.lastMonthAvg > 0
+                ? (comparison.change / comparison.lastMonthAvg) * 100
+                : 0;
+            }
           }
-        }
 
-        // Check other boolean events
-        for (const { event: otherBool, dataPoints: otherData } of booleanEvents) {
-          if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
-          if (otherBool.id === boolEvent.id) continue;
-
-          const trueValues = trueDates
-            .map(date => otherData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          const falseValues = falseDates.length > 0 ? falseDates
-            .map(date => otherData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number) : [];
-
-          if (trueValues.length > 0) {
-            const trueTrue = trueValues.filter(v => v > 0.5).length;
-            const trueRate = (trueTrue / trueValues.length) * 100;
-
-            let shouldInclude = false;
-            let outcomeText = '';
-
-            if (falseValues.length > 0) {
-              const falseTrue = falseValues.filter(v => v > 0.5).length;
-              const falseRate = (falseTrue / falseValues.length) * 100;
-              const diff = trueRate - falseRate;
-
-              if (Math.abs(diff) > 10) {
-                shouldInclude = true;
-                trueRelatedEvents.push(otherBool);
-                if (diff > 0) {
-                  outcomeText = trueRate >= 80
-                    ? otherBool.name
-                    : `${otherBool.name} ${trueRate.toFixed(0)}%`;
-                } else {
-                  outcomeText = trueRate <= 20
-                    ? `No ${otherBool.name}`
-                    : `${otherBool.name} ${trueRate.toFixed(0)}%`;
-                }
-              }
+          // Determine trend
+          if (comparison.change !== undefined) {
+            if (Math.abs(comparison.change) < 0.01) {
+              comparison.trend = 'stable';
+            } else if (comparison.change > 0) {
+              comparison.trend = 'up';
             } else {
-              if (trueRate >= 70) {
-                shouldInclude = true;
-                trueRelatedEvents.push(otherBool);
-                outcomeText = otherBool.name;
-              } else if (trueRate <= 30) {
-                shouldInclude = true;
-                trueRelatedEvents.push(otherBool);
-                outcomeText = `No ${otherBool.name}`;
-              }
-            }
-
-            if (shouldInclude && outcomeText) {
-              trueOutcomes.push(outcomeText);
+              comparison.trend = 'down';
             }
           }
-        }
 
-        // Check string events
-        for (const { event: strEvent, dataPoints: strData } of stringEvents) {
-          if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
-          const trueStrValues = trueDates
-            .map(date => strData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'string')
-            .map(d => String(d!.value).trim().toLowerCase())
-            .filter(v => v);
+          return comparison;
+        })
+      );
+      setMonthComparisons(monthComps);
 
-          if (trueStrValues.length > 0) {
-            // Find most common string value when boolean is true
-            const freq: Record<string, number> = {};
-            trueStrValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
-            const mostCommon = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
-
-            if (mostCommon && mostCommon[1] / trueStrValues.length >= 0.5) {
-              trueRelatedEvents.push(strEvent);
-              const pct = ((mostCommon[1] / trueStrValues.length) * 100).toFixed(0);
-              trueOutcomes.push(`${strEvent.name} "${mostCommon[0]}" ${pct}%`);
-            }
-          }
-        }
-
-        if (trueOutcomes.length > 0) {
-          // Format as concise formula: "Good day → Sleep 6-8h → Romance 2h → ..."
-          const description = `${boolEvent.name} → ${trueOutcomes.join(' → ')}`;
-          patterns.push({
-            description,
-            confidence: Math.min(95, 65 + trueOutcomes.length * 4),
-            type: 'co-occurrence',
-            events: trueRelatedEvents,
-          });
-        }
+      // Calculate best day of week (last 30 days)
+      const dayStats: Record<number, { total: number; completed: number }> = {};
+      for (let i = 0; i < 7; i++) {
+        dayStats[i] = { total: 0, completed: 0 };
       }
 
-      // Analyze what happens when boolean is FALSE (if we have false dates)
-      if (falseDates.length >= 1) {
-        const falseOutcomes: string[] = [];
-        const falseRelatedEvents: Event[] = [boolEvent];
+      for (let i = 0; i < 30; i++) {
+        const date = subDays(today, i);
+        const dateStr = format(date, 'yyyy-MM-dd');
+        const dayIndex = getDay(date);
+        const dayValues = valuesByDate[dateStr] || [];
 
-        // Check number events
-        for (const { event: numEvent, dataPoints: numData } of numberEvents) {
-          if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
-          const falseValues = falseDates
-            .map(date => numData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
+        events.forEach(event => {
+          dayStats[dayIndex].total++;
 
-          const trueValues = trueDates.length > 0 ? trueDates
-            .map(date => numData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number) : [];
-
-          if (falseValues.length > 0) {
-            const avgFalse = falseValues.reduce((a, b) => a + b, 0) / falseValues.length;
-            const minFalse = Math.min(...falseValues);
-            const maxFalse = Math.max(...falseValues);
-            const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
-
-            let shouldInclude = false;
-            if (trueValues.length > 0) {
-              const avgTrue = trueValues.reduce((a, b) => a + b, 0) / trueValues.length;
-              const diff = Math.abs(avgFalse - avgTrue);
-              const percentDiff = avgTrue > 0 ? (diff / avgTrue) * 100 : 0;
-              shouldInclude = percentDiff > 5 || diff > 0.5;
-            } else {
-              shouldInclude = avgFalse > 0.1;
-            }
-
-            if (shouldInclude) {
-              falseRelatedEvents.push(numEvent);
-              if (maxFalse - minFalse > 0.5) {
-                falseOutcomes.push(`${numEvent.name} ${minFalse.toFixed(1)}-${maxFalse.toFixed(1)}${unit}`);
-              } else {
-                falseOutcomes.push(`${numEvent.name} ${avgFalse.toFixed(1)}${unit}`);
-              }
-            }
+          // Since valuesByDate only contains non-default values, if it exists, it's completed
+          const hasValue = dayValues.some(v => v.eventId === event.id);
+          if (hasValue) {
+            dayStats[dayIndex].completed++;
           }
-        }
-
-        // Check other boolean events
-        for (const { event: otherBool, dataPoints: otherData } of booleanEvents) {
-          if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
-          if (otherBool.id === boolEvent.id) continue;
-
-          const falseValues = falseDates
-            .map(date => otherData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number);
-
-          const trueValues = trueDates.length > 0 ? trueDates
-            .map(date => otherData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'number')
-            .map(d => d!.value as number) : [];
-
-          if (falseValues.length > 0) {
-            const falseTrue = falseValues.filter(v => v > 0.5).length;
-            const falseRate = (falseTrue / falseValues.length) * 100;
-
-            let shouldInclude = false;
-            let outcomeText = '';
-
-            if (trueValues.length > 0) {
-              const trueTrue = trueValues.filter(v => v > 0.5).length;
-              const trueRate = (trueTrue / trueValues.length) * 100;
-              const diff = falseRate - trueRate;
-
-              if (Math.abs(diff) > 10) {
-                shouldInclude = true;
-                falseRelatedEvents.push(otherBool);
-                if (diff > 0) {
-                  outcomeText = falseRate >= 80
-                    ? otherBool.name
-                    : `${otherBool.name} ${falseRate.toFixed(0)}%`;
-                } else {
-                  outcomeText = falseRate <= 20
-                    ? `No ${otherBool.name}`
-                    : `${otherBool.name} ${falseRate.toFixed(0)}%`;
-                }
-              }
-            } else {
-              if (falseRate >= 70) {
-                shouldInclude = true;
-                falseRelatedEvents.push(otherBool);
-                outcomeText = otherBool.name;
-              } else if (falseRate <= 30) {
-                shouldInclude = true;
-                falseRelatedEvents.push(otherBool);
-                outcomeText = `No ${otherBool.name}`;
-              }
-            }
-
-            if (shouldInclude && outcomeText) {
-              falseOutcomes.push(outcomeText);
-            }
-          }
-        }
-
-        // Check string events
-        for (const { event: strEvent, dataPoints: strData } of stringEvents) {
-          if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
-          const falseStrValues = falseDates
-            .map(date => strData.find(d => d.date === date))
-            .filter(d => d && typeof d.value === 'string')
-            .map(d => String(d!.value).trim().toLowerCase())
-            .filter(v => v);
-
-          if (falseStrValues.length > 0) {
-            // Find most common string value when boolean is false
-            const freq: Record<string, number> = {};
-            falseStrValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
-            const mostCommon = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
-
-            if (mostCommon && mostCommon[1] / falseStrValues.length >= 0.5) {
-              falseRelatedEvents.push(strEvent);
-              const pct = ((mostCommon[1] / falseStrValues.length) * 100).toFixed(0);
-              falseOutcomes.push(`${strEvent.name} "${mostCommon[0]}" ${pct}%`);
-            }
-          }
-        }
-
-        if (falseOutcomes.length > 0) {
-          // Format as concise formula with "NOT" prefix: "NOT Good day → Sleep 4-6h → No Romance → ..."
-          const description = `NOT ${boolEvent.name} → ${falseOutcomes.join(' → ')}`;
-          patterns.push({
-            description,
-            confidence: Math.min(95, 65 + falseOutcomes.length * 4),
-            type: 'co-occurrence',
-            events: falseRelatedEvents,
-          });
-        }
-      }
-    }
-
-    // 3. NUMBER THRESHOLD PATTERNS: High/low values and their correlations
-    for (const { event: numEvent, dataPoints: numData } of numberEvents) {
-      if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
-      const numericValues = numData
-        .filter(d => typeof d.value === 'number')
-        .map(d => ({ date: d.date, value: d.value as number }));
-
-      if (numericValues.length < 2) continue;
-
-      const values = numericValues.map(d => d.value);
-      const avg = values.reduce((a, b) => a + b, 0) / values.length;
-      const max = Math.max(...values);
-      const min = Math.min(...values);
-
-      // Skip if no variation
-      if (max - min < 0.5) continue;
-
-      // Define "high" as above average
-      const threshold = avg;
-      const highDates = numericValues.filter(d => d.value > threshold).map(d => d.date);
-      const lowDates = numericValues.filter(d => d.value <= threshold).map(d => d.date);
-
-      if (highDates.length < 1 || lowDates.length < 1) continue;
-
-      const unit = numEvent.unit ? ` ${numEvent.unit}` : '';
-
-      // HIGH pattern
-      const highOutcomes: string[] = [];
-      const highRelatedEvents: Event[] = [numEvent];
-
-      // Check other number events
-      for (const { event: otherNum, dataPoints: otherData } of numberEvents) {
-        if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
-        if (otherNum.id === numEvent.id) continue;
-
-        const highValues = highDates
-          .map(date => otherData.find(d => d.date === date))
-          .filter(d => d && typeof d.value === 'number')
-          .map(d => d!.value as number);
-
-        const lowValues = lowDates
-          .map(date => otherData.find(d => d.date === date))
-          .filter(d => d && typeof d.value === 'number')
-          .map(d => d!.value as number);
-
-        if (highValues.length > 0 && lowValues.length > 0) {
-          const avgHigh = highValues.reduce((a, b) => a + b, 0) / highValues.length;
-          const avgLow = lowValues.reduce((a, b) => a + b, 0) / lowValues.length;
-          const diff = Math.abs(avgHigh - avgLow);
-          const percentDiff = avgLow > 0 ? (diff / avgLow) * 100 : 0;
-
-          if (percentDiff > 5 || diff > 0.5) {
-            highRelatedEvents.push(otherNum);
-            const otherUnit = otherNum.unit ? ` ${otherNum.unit}` : '';
-            highOutcomes.push(`${otherNum.name} ${avgHigh.toFixed(1)}${otherUnit}`);
-          }
-        }
-      }
-
-      // Check boolean events
-      for (const { event: boolEv, dataPoints: boolDt } of booleanEvents) {
-        if (patterns.length >= MAX_PATTERNS) break; // EARLY EXIT
-        const highBools = highDates
-          .map(date => boolDt.find(d => d.date === date))
-          .filter(d => d && typeof d.value === 'number')
-          .map(d => d!.value as number);
-
-        const lowBools = lowDates
-          .map(date => boolDt.find(d => d.date === date))
-          .filter(d => d && typeof d.value === 'number')
-          .map(d => d!.value as number);
-
-        if (highBools.length > 0 && lowBools.length > 0) {
-          const highRate = (highBools.filter(v => v > 0.5).length / highBools.length) * 100;
-          const lowRate = (lowBools.filter(v => v > 0.5).length / lowBools.length) * 100;
-          const diff = highRate - lowRate;
-
-          if (Math.abs(diff) > 10) {
-            highRelatedEvents.push(boolEv);
-            if (diff > 0) {
-              const text = highRate >= 80 ? boolEv.name : `${boolEv.name} ${highRate.toFixed(0)}%`;
-              highOutcomes.push(text);
-            } else {
-              const text = highRate <= 20 ? `No ${boolEv.name}` : `${boolEv.name} ${highRate.toFixed(0)}%`;
-              highOutcomes.push(text);
-            }
-          }
-        }
-      }
-
-      if (highOutcomes.length > 0) {
-        // Format as concise formula: "Sleep 7+h → Good day → Romance 2h → ..."
-        const description = `${numEvent.name} ${threshold.toFixed(1)}+${unit} → ${highOutcomes.join(' → ')}`;
-        patterns.push({
-          description,
-          confidence: Math.min(95, 65 + highOutcomes.length * 4),
-          type: 'threshold',
-          events: highRelatedEvents,
         });
       }
-    }
 
-    // Return ALL patterns sorted by confidence (no limit!)
-    return patterns.sort((a, b) => b.confidence - a.confidence);
-  };
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const dowStats: DayOfWeekStats[] = Object.entries(dayStats).map(([dayIndex, stats]) => ({
+        day: dayNames[parseInt(dayIndex)],
+        dayIndex: parseInt(dayIndex),
+        completionRate: stats.total > 0 ? (stats.completed / stats.total) * 100 : 0,
+      })).sort((a, b) => b.completionRate - a.completionRate);
 
+      setDayOfWeekStats(dowStats);
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 80) return 'text-green-600';
-    if (confidence >= 60) return 'text-yellow-600';
-    return 'text-orange-600';
-  };
+      // Generate heatmap data (last 84 days = 12 weeks)
+      const heatmapDays = 84;
+      const heatmap: { date: string; count: number }[] = [];
 
-  const getConfidenceLabel = (confidence: number) => {
-    if (confidence >= 80) return 'High confidence';
-    if (confidence >= 60) return 'Medium confidence';
-    return 'Low confidence';
-  };
+      for (let i = heatmapDays - 1; i >= 0; i--) {
+        const date = subDays(today, i);
+        const dateStr = format(date, 'yyyy-MM-dd');
+        const dayValues = valuesByDate[dateStr] || [];
 
-  const CombinedChart = () => {
-    // State for mobile tooltip
-    const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number; visible: boolean; data: any; date: string } | null>(null);
+        // Since valuesByDate only contains non-default values, count is just the number of events with values
+        const count = dayValues.length;
 
-    // Calculate data
-    const numericEvents = chartData.filter((d) => d.event.type !== 'string' && d.dataPoints.length > 0);
-    const stringEvents = chartData.filter((d) => d.event.type === 'string' && d.dataPoints.length > 0);
+        heatmap.push({ date: dateStr, count });
+      }
+      setHeatmapData(heatmap);
 
-    // Check if we should render
-    if (chartData.length === 0 || (numericEvents.length === 0 && stringEvents.length === 0)) {
-      return null;
-    }
+      // Calculate stats for milestones - Use 90-day data we already loaded
+      let maxStreak = 0;
+      let totalEventCount = 0;
+      let avgConsistency = 0;
+      let trackingStreakValue = 0;
 
-    // Get all unique dates from both numeric and string events
-    const allDates = Array.from(
-      new Set([
-        ...numericEvents.flatMap((d) => d.dataPoints.map((p) => p.date)),
-        ...stringEvents.flatMap((d) => d.dataPoints.map((p) => p.date))
-      ])
-    ).sort();
+      const milestoneDays = 90;
 
-    // Create mapping for string values to numbers
-    const stringValueMappings: Record<string, { values: string[]; colorMap: Record<string, string> }> = {};
-    stringEvents.forEach(({ event, dataPoints }) => {
-      const uniqueValues = Array.from(new Set(
-        dataPoints.map(d => String(d.value).trim().toLowerCase()).filter(v => v)
-      )).sort();
+      for (const event of events) {
+        // Get only non-default event values for this event
+        const eventValues = nonDefaultValues.filter(v => v.eventId === event.id);
 
-      // Assign each unique value a position from 0 to 100
-      const colorMap: Record<string, string> = {};
-      uniqueValues.forEach((val, idx) => {
-        const hue = (idx * 360) / Math.max(uniqueValues.length, 1);
-        colorMap[val] = `hsl(${hue}, 70%, 60%)`;
-      });
+        // Calculate CURRENT streak (consecutive days from today backwards)
+        let currentStreak = 0;
+        for (let i = 0; i < milestoneDays; i++) {
+          const dateStr = format(subDays(today, i), 'yyyy-MM-dd');
+          const hasValue = eventValues.some(v => v.date === dateStr);
 
-      stringValueMappings[event.name] = { values: uniqueValues, colorMap };
-    });
-
-    // Create chart data with all events combined
-    const combinedChartData = allDates.map((date) => {
-      const dataPoint: any = {
-        date: format(parseISO(date), 'MMM d'),
-        fullDate: date,
-      };
-
-      numericEvents.forEach(({ event, dataPoints }) => {
-        const point = dataPoints.find((p) => p.date === date);
-        if (point && typeof point.value === 'number') {
-          // Normalize to 0-100 scale
-          const values = dataPoints.map((d) => typeof d.value === 'number' ? d.value : 0);
-          const min = Math.min(...values);
-          const max = Math.max(...values);
-          const range = max - min || 1;
-          const normalized = ((point.value - min) / range) * 100;
-
-          dataPoint[event.name] = normalized;
-          dataPoint[`${event.name}_original`] = point.value;
-        }
-      });
-
-      // Add string events as categorical values
-      stringEvents.forEach(({ event, dataPoints }) => {
-        const point = dataPoints.find((p) => p.date === date);
-        if (point && typeof point.value === 'string') {
-          const stringValue = String(point.value).trim().toLowerCase();
-          const mapping = stringValueMappings[event.name];
-          if (mapping && stringValue) {
-            // Map to position in the list (evenly spaced 0-100)
-            const index = mapping.values.indexOf(stringValue);
-            if (index !== -1) {
-              const position = mapping.values.length > 1
-                ? (index / (mapping.values.length - 1)) * 100
-                : 50;
-              dataPoint[event.name] = position;
-              dataPoint[`${event.name}_original`] = stringValue;
-            }
+          if (hasValue) {
+            currentStreak++;
+          } else {
+            break;
           }
         }
+
+        // Calculate MAX streak (best streak in the period)
+        let tempStreak = 0;
+        let bestStreak = currentStreak;
+
+        for (let i = 0; i < milestoneDays; i++) {
+          const dateStr = format(subDays(today, i), 'yyyy-MM-dd');
+          const hasValue = eventValues.some(v => v.date === dateStr);
+
+          if (hasValue) {
+            tempStreak++;
+            bestStreak = Math.max(bestStreak, tempStreak);
+          } else {
+            tempStreak = 0;
+          }
+        }
+
+        maxStreak = Math.max(maxStreak, bestStreak);
+
+        // Count total DAYS with non-default events
+        totalEventCount += eventValues.length;
+
+        // Calculate consistency (days with non-default data / total days checked)
+        const daysWithData = eventValues.length;
+        avgConsistency += (daysWithData / milestoneDays) * 100;
+      }
+
+      avgConsistency = events.length > 0 ? avgConsistency / events.length : 0;
+
+      // Calculate tracking streak (days where ALL events have non-default values)
+      if (events.length > 0) {
+        for (let i = 0; i < milestoneDays; i++) {
+          const dateStr = format(subDays(today, i), 'yyyy-MM-dd');
+
+          const allEventsTracked = events.every(event => {
+            return nonDefaultValues.some(v => v.eventId === event.id && v.date === dateStr);
+          });
+
+          if (allEventsTracked) {
+            trackingStreakValue++;
+          } else {
+            break;
+          }
+        }
+      }
+
+      setTrackingStreak(trackingStreakValue);
+
+      // Generate ALL milestones (both achieved and unachieved)
+      const generatedMilestones: Milestone[] = [
+        // Streak Milestones
+        {
+          title: 'First Steps',
+          description: maxStreak >= 3
+            ? 'Started your journey!'
+            : 'Maintain a 3-day streak',
+          icon: FlameIcon,
+          color: '#fbbf24',
+          achieved: maxStreak >= 3,
+        },
+        {
+          title: 'Week Warrior',
+          description: maxStreak >= 7
+            ? `${maxStreak}-day streak!`
+            : 'Maintain a 7-day streak',
+          icon: FlameIcon,
+          color: '#f97316',
+          achieved: maxStreak >= 7,
+        },
+        {
+          title: 'Two Weeks Strong',
+          description: maxStreak >= 14
+            ? 'Two weeks of consistency!'
+            : 'Maintain a 14-day streak',
+          icon: FlameIcon,
+          color: '#ea580c',
+          achieved: maxStreak >= 14,
+        },
+        {
+          title: 'Monthly Master',
+          description: maxStreak >= 30
+            ? 'A full month streak!'
+            : 'Reach a 30-day streak',
+          icon: TrophyIcon,
+          color: '#f59e0b',
+          achieved: maxStreak >= 30,
+        },
+        {
+          title: 'Quarter Champion',
+          description: maxStreak >= 90
+            ? '90 days of excellence!'
+            : 'Reach a 90-day streak',
+          icon: TrophyIcon,
+          color: '#d97706',
+          achieved: maxStreak >= 90,
+        },
+        {
+          title: 'Half Year Hero',
+          description: maxStreak >= 180
+            ? 'Six months strong!'
+            : 'Reach a 180-day streak',
+          icon: TrophyIcon,
+          color: '#c2410c',
+          achieved: maxStreak >= 180,
+        },
+        {
+          title: 'Year Long Legend',
+          description: maxStreak >= 365
+            ? 'A full year streak!'
+            : 'Reach a 365-day streak',
+          icon: TrophyIcon,
+          color: '#b91c1c',
+          achieved: maxStreak >= 365,
+        },
+
+        // Consistency Milestones
+        {
+          title: 'Getting Started',
+          description: avgConsistency >= 50
+            ? `${avgConsistency.toFixed(0)}% consistent`
+            : 'Reach 50% consistency',
+          icon: ZapIcon,
+          color: '#94a3b8',
+          achieved: avgConsistency >= 50,
+        },
+        {
+          title: 'Building Habits',
+          description: avgConsistency >= 70
+            ? `${avgConsistency.toFixed(0)}% consistent`
+            : 'Reach 70% consistency',
+          icon: ZapIcon,
+          color: '#64748b',
+          achieved: avgConsistency >= 70,
+        },
+        {
+          title: 'Consistency Pro',
+          description: avgConsistency >= 80
+            ? `${avgConsistency.toFixed(0)}% consistent`
+            : 'Reach 80% consistency',
+          icon: ZapIcon,
+          color: '#06b6d4',
+          achieved: avgConsistency >= 80,
+        },
+        {
+          title: 'Consistency Champion',
+          description: avgConsistency >= 90
+            ? `${avgConsistency.toFixed(0)}% consistent`
+            : 'Reach 90% consistency',
+          icon: ZapIcon,
+          color: '#3b82f6',
+          achieved: avgConsistency >= 90,
+        },
+        {
+          title: 'Perfect Tracker',
+          description: avgConsistency >= 95
+            ? `${avgConsistency.toFixed(0)}% consistent!`
+            : 'Reach 95% consistency',
+          icon: ZapIcon,
+          color: '#2563eb',
+          achieved: avgConsistency >= 95,
+        },
+
+        // Total Events Milestones
+        {
+          title: 'Getting Active',
+          description: totalEventCount >= 50
+            ? '50+ events logged'
+            : 'Log 50 total events',
+          icon: AwardIcon,
+          color: '#a78bfa',
+          achieved: totalEventCount >= 50,
+        },
+        {
+          title: 'Century Club',
+          description: totalEventCount >= 100
+            ? '100+ events logged'
+            : 'Log 100 total events',
+          icon: AwardIcon,
+          color: '#8b5cf6',
+          achieved: totalEventCount >= 100,
+        },
+        {
+          title: 'Quarter Thousand',
+          description: totalEventCount >= 250
+            ? '250+ events logged'
+            : 'Log 250 total events',
+          icon: AwardIcon,
+          color: '#7c3aed',
+          achieved: totalEventCount >= 250,
+        },
+        {
+          title: 'Half Thousand',
+          description: totalEventCount >= 500
+            ? '500+ events logged!'
+            : 'Log 500 total events',
+          icon: AwardIcon,
+          color: '#6d28d9',
+          achieved: totalEventCount >= 500,
+        },
+        {
+          title: 'Thousand Club',
+          description: totalEventCount >= 1000
+            ? '1000+ events logged!'
+            : 'Log 1000 total events',
+          icon: AwardIcon,
+          color: '#5b21b6',
+          achieved: totalEventCount >= 1000,
+        },
+
+        // Tracking Streak Milestones
+        {
+          title: 'Full Day Tracker',
+          description: trackingStreakValue >= 1
+            ? 'Tracked everything today!'
+            : 'Track all events for 1 day',
+          icon: CheckCircle2Icon,
+          color: '#86efac',
+          achieved: trackingStreakValue >= 1,
+        },
+        {
+          title: 'Complete Tracker',
+          description: trackingStreakValue >= 7
+            ? `${trackingStreakValue} days of full tracking`
+            : 'Track all events for 7 days',
+          icon: CheckCircle2Icon,
+          color: '#22c55e',
+          achieved: trackingStreakValue >= 7,
+        },
+        {
+          title: 'Dedicated Logger',
+          description: trackingStreakValue >= 14
+            ? `${trackingStreakValue} days complete!`
+            : 'Track all events for 14 days',
+          icon: CheckCircle2Icon,
+          color: '#16a34a',
+          achieved: trackingStreakValue >= 14,
+        },
+        {
+          title: 'Tracking Master',
+          description: trackingStreakValue >= 30
+            ? `${trackingStreakValue} days complete!`
+            : 'Track all events for 30 days',
+          icon: CheckCircle2Icon,
+          color: '#15803d',
+          achieved: trackingStreakValue >= 30,
+        },
+      ];
+
+      // Sort milestones: achieved first, then unachieved
+      const sortedMilestones = generatedMilestones.sort((a, b) => {
+        if (a.achieved === b.achieved) return 0;
+        return a.achieved ? -1 : 1;
       });
 
-      return dataPoint;
-    });
+      setMilestones(sortedMilestones);
 
+      // Generate recommendations based on patterns
+      const recs: RecommendedAction[] = [];
+
+      // Best day recommendation
+      if (dowStats.length > 0 && dowStats[0].completionRate > 70) {
+        recs.push({
+          action: `${dowStats[0].day} is your best day`,
+          reason: `${dowStats[0].completionRate.toFixed(0)}% completion rate. Schedule important tasks on ${dowStats[0].day}s.`,
+          confidence: dowStats[0].completionRate,
+        });
+      }
+
+      // Consistency recommendation
+      if (avgConsistency < 80) {
+        recs.push({
+          action: 'Improve tracking consistency',
+          reason: `Currently at ${avgConsistency.toFixed(0)}%. Try setting daily reminders.`,
+          confidence: 100 - avgConsistency,
+        });
+      }
+
+      // Streak opportunity
+      summaryStats.forEach(stat => {
+        if (stat.currentStreak && stat.currentStreak >= 3 && stat.currentStreak < (stat.bestStreak || 0)) {
+          recs.push({
+            action: `Keep ${stat.eventName} streak going`,
+            reason: `You're at ${stat.currentStreak} days. Your record is ${stat.bestStreak}.`,
+            confidence: (stat.currentStreak / (stat.bestStreak || 1)) * 100,
+          });
+        }
+      });
+
+      setRecommendations(recs);
+
+      // Top correlations
+      const correlations: TopCorrelation[] = [];
+
+      const highPerformers = summaryStats.filter(s => (s.completionRate || 0) > 70 || (s.average || 0) > 0);
+      if (highPerformers.length >= 2) {
+        correlations.push({
+          description: `Strong habits: ${highPerformers.slice(0, 2).map(s => s.eventName).join(' and ')}`,
+          confidence: Math.min(...highPerformers.slice(0, 2).map(s => s.completionRate || s.average || 0)),
+          events: highPerformers.slice(0, 2).map(s => events.find(e => e.name === s.eventName)!).filter(Boolean),
+        });
+      }
+
+      setTopCorrelations(correlations);
+
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isLoading) {
     return (
-      <View className="bg-card border border-border rounded-lg p-4 mb-4">
-        <Text className="font-semibold text-lg mb-2">All Events Combined</Text>
-        <Text className="text-sm text-muted-foreground mb-4">
-          Normalized view to see patterns (scrollable){stringEvents.length > 0 ? ' • Dashed lines = text events' : ''}
-        </Text>
+      <View className="flex-1 bg-[#fafafa] dark:bg-black">
+        <Stack.Screen
+          options={{
+            title: 'Dashboard',
+          }}
+        />
+        <ScrollView
+          className="flex-1 p-4"
+          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        >
+          <View className="gap-4">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+              <Skeleton key={i} className="h-32 w-full rounded-lg" />
+            ))}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
-        <View className="mb-4">
-          {/* Legend showing all events */}
-          <View className="flex-row flex-wrap mb-3">
-            {[...numericEvents, ...stringEvents].map(({ event }) => (
-              <View key={event.id} className="flex-row items-center mr-4 mb-2">
-                <View style={{ width: 12, height: 12, backgroundColor: event.color, marginRight: 6, borderRadius: 6 }} />
-                <Text className="text-xs">{event.name}</Text>
-                {event.unit && <Text className="text-xs text-muted-foreground ml-1">({event.unit})</Text>}
+  if (events.length === 0) {
+    return (
+      <View className="flex-1 bg-[#fafafa] dark:bg-black">
+        <Stack.Screen
+          options={{
+            title: 'Dashboard',
+          }}
+        />
+        <View className="flex-1 items-center justify-center p-8">
+          <Icon as={ActivityIcon} className="size-16 text-[#a3a3a3] mb-4" />
+          <Text className="text-xl font-semibold text-[#0a0a0a] dark:text-[#fafafa] text-center mb-2">
+            No Events Yet
+          </Text>
+          <Text className="text-base text-[#737373] dark:text-[#a3a3a3] text-center">
+            Start tracking events to see your analytics dashboard
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View className="flex-1 bg-[#fafafa] dark:bg-black">
+      <Stack.Screen
+        options={{
+          title: 'Dashboard',
+        }}
+      />
+      <ScrollView
+        className="flex-1 p-4"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+      >
+        {/* Milestones */}
+        <View className="mb-6">
+          <View className="flex-row items-center justify-between mb-3">
+            <View className="flex-row items-center">
+              <Icon as={TrophyIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
+              <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
+                Milestones
+              </Text>
+            </View>
+            {milestones.length > 4 && (
+              <Pressable onPress={() => setShowAllMilestones(!showAllMilestones)}>
+                <Text className="text-sm text-[#3b82f6] dark:text-[#60a5fa]">
+                  {showAllMilestones ? 'Show Less' : `Show All (${milestones.length})`}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+          <View className="flex-row flex-wrap gap-3">
+            {(showAllMilestones ? milestones : milestones.slice(0, 4)).map((milestone, index) => (
+              <View
+                key={index}
+                className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-3 flex-row items-center"
+                style={{
+                  width: (screenWidth - 40) / 2 - 6,
+                  opacity: milestone.achieved ? 1 : 0.4
+                }}
+              >
+                <View
+                  className="w-10 h-10 rounded-full items-center justify-center mr-3"
+                  style={{ backgroundColor: milestone.color + '20' }}
+                >
+                  <Icon as={milestone.icon} size={20} color={milestone.color} />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-semibold text-[#0a0a0a] dark:text-[#fafafa]">
+                    {milestone.title}
+                  </Text>
+                  <Text className="text-xs text-[#737373] dark:text-[#a3a3a3]">
+                    {milestone.description}
+                  </Text>
+                </View>
               </View>
             ))}
           </View>
-
-          {/* Combined chart with all lines - Custom SVG (True cross-platform) */}
-          <View style={{ height: 250, width: '100%' }}>
-            <ScrollView horizontal showsHorizontalScrollIndicator>
-              <View style={{ width: Math.max(screenWidth - 32, combinedChartData.length * 50), height: 250 }}>
-                <Svg width={Math.max(screenWidth - 32, combinedChartData.length * 50)} height={250}>
-                  <G>
-                    {/* Render lines for each event */}
-                    {[...numericEvents, ...stringEvents].map(({ event }) => {
-                      // Create path points for this event's line
-                      const points: Array<{ x: number; y: number }> = [];
-
-                      combinedChartData.forEach((dataPoint, index) => {
-                        const value = dataPoint[event.name];
-                        if (value !== undefined && value !== null) {
-                          const x = 40 + (index * (Math.max(screenWidth - 72, combinedChartData.length * 50 - 40) / (combinedChartData.length - 1)));
-                          const y = 210 - (value * 1.8); // Scale: 0-100 maps to 210-30 (inverted Y axis)
-                          points.push({ x, y });
-                        }
-                      });
-
-                      // Draw line segments
-                      return (
-                        <G key={event.id}>
-                          {points.map((point, i) => {
-                            if (i === 0) return null;
-                            const prevPoint = points[i - 1];
-                            return (
-                              <SvgLine
-                                key={`${event.id}-line-${i}`}
-                                x1={prevPoint.x}
-                                y1={prevPoint.y}
-                                x2={point.x}
-                                y2={point.y}
-                                stroke={event.color}
-                                strokeWidth={2}
-                              />
-                            );
-                          })}
-                          {/* Draw clickable circles at data points */}
-                          {points.map((point, i) => (
-                            <Circle
-                              key={`${event.id}-point-${i}`}
-                              cx={point.x}
-                              cy={point.y}
-                              r={4}
-                              fill={event.color}
-                              onPress={() => {
-                                const dataPoint = combinedChartData[i];
-                                setTooltipPos({
-                                  x: point.x,
-                                  y: point.y,
-                                  visible: true,
-                                  data: dataPoint,
-                                  date: dataPoint.date
-                                });
-                              }}
-                            />
-                          ))}
-                        </G>
-                      );
-                    })}
-                  </G>
-                </Svg>
-              </View>
-            </ScrollView>
-          </View>
         </View>
 
-        {/* Tooltip Modal - renders on top of everything */}
-        <Modal
-          visible={tooltipPos !== null && tooltipPos.visible}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setTooltipPos(null)}
-        >
-          <Pressable
-            style={{
-              flex: 1,
-              backgroundColor: 'rgba(0, 0, 0, 0.5)',
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}
-            onPress={() => setTooltipPos(null)}
-          >
-            {tooltipPos && (
-              <View
-                style={{
-                  backgroundColor: '#FFFFFF',
-                  padding: 16,
-                  borderRadius: 12,
-                  borderWidth: 2,
-                  borderColor: '#333',
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.3,
-                  shadowRadius: 8,
-                  elevation: 10,
-                  minWidth: 200,
-                  maxWidth: 300,
-                }}
-              >
-                <Text style={{ color: '#000', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>
-                  {tooltipPos.data.date}
-                </Text>
-                {[...numericEvents, ...stringEvents].map(({ event }) => {
-                  const value = tooltipPos.data[event.name];
-                  if (value === undefined || value === null) return null;
-
-                  // Get original value
-                  const originalValue = tooltipPos.data[event.name + '_original'];
-                  const displayValue = (originalValue !== undefined && originalValue !== null)
-                    ? originalValue
-                    : value.toFixed(1);
-
-                  return (
-                    <View key={event.id} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                      <View
-                        style={{
-                          width: 10,
-                          height: 10,
-                          borderRadius: 5,
-                          backgroundColor: event.color,
-                          marginRight: 8,
-                        }}
-                      />
-                      <Text style={{ color: '#000', fontSize: 12, flex: 1 }}>
-                        {event.name}: {displayValue}{event.unit ? ` ${event.unit}` : ''}
-                      </Text>
-                    </View>
-                  );
-                })}
-                <Text style={{ color: '#666', fontSize: 10, textAlign: 'center', marginTop: 12, fontStyle: 'italic' }}>
-                  Tap anywhere to close
+        {/* Personal Records */}
+        <View className="mb-6">
+          <View className="flex-row items-center mb-3">
+            <Icon as={AwardIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
+            <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
+              Personal Records
+            </Text>
+          </View>
+          <View className="gap-3">
+            {summaryStats
+              .filter(stat => stat.eventType === 'boolean' && stat.bestStreak && stat.bestStreak > 0)
+              .sort((a, b) => (b.bestStreak || 0) - (a.bestStreak || 0))
+              .slice(0, 5)
+              .map((stat, index) => (
+                <View
+                  key={index}
+                  className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4 flex-row items-center justify-between"
+                  style={{ borderLeftWidth: 4, borderLeftColor: stat.color }}
+                >
+                  <View className="flex-1">
+                    <Text className="text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa]">
+                      {stat.eventName}
+                    </Text>
+                    <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">
+                      Longest Streak
+                    </Text>
+                  </View>
+                  <View className="items-end">
+                    <Text className="text-2xl font-bold text-[#f59e0b]">
+                      {stat.bestStreak}
+                    </Text>
+                    <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">
+                      days
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            {summaryStats.filter(stat => stat.eventType === 'boolean' && stat.bestStreak && stat.bestStreak > 0).length === 0 && (
+              <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 items-center">
+                <Text className="text-sm text-[#737373] dark:text-[#a3a3a3] text-center">
+                  No streaks yet. Keep tracking to build your records!
                 </Text>
               </View>
             )}
-          </Pressable>
-        </Modal>
-      </View>
-    );
-  };
+          </View>
+        </View>
 
-  return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Patterns & Insights',
-        }}
-      />
-      <ScrollView className="flex-1 bg-background p-4">
-        {isLoading ? (
-          <View className="py-4">
-            {/* Loading skeletons for dashboard */}
-            <View className="mb-6">
-              <Skeleton className="w-32 h-8 rounded mb-3" />
-              <View className="flex-row gap-2 mb-4">
-                <Skeleton className="flex-1 h-9 rounded" />
-                <Skeleton className="flex-1 h-9 rounded" />
-                <Skeleton className="flex-1 h-9 rounded" />
+        {/* Best Day of Week */}
+        <View className="mb-6">
+          <View className="flex-row items-center mb-3">
+            <Icon as={TargetIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
+            <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
+              Best Days of Week
+            </Text>
+          </View>
+          <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4">
+            {dayOfWeekStats.slice(0, 7).map((dayStat, index) => (
+              <View key={index} className="mb-3 last:mb-0">
+                <View className="flex-row items-center justify-between mb-1">
+                  <Text className="text-sm font-medium text-[#0a0a0a] dark:text-[#fafafa]">
+                    {dayStat.day}
+                  </Text>
+                  <Text className="text-sm font-semibold text-[#3b82f6]">
+                    {dayStat.completionRate.toFixed(0)}%
+                  </Text>
+                </View>
+                <View className="h-2 bg-[#e5e5e5] dark:bg-[#262626] rounded-full overflow-hidden">
+                  <View
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${dayStat.completionRate}%`,
+                      backgroundColor: index === 0 ? '#22c55e' : '#3b82f6',
+                    }}
+                  />
+                </View>
               </View>
-              <Skeleton className="w-full h-64 rounded mb-4" />
+            ))}
+          </View>
+        </View>
+
+        {/* Comparisons with Tabs */}
+        {(weekComparisons.length > 0 || monthComparisons.filter(c => c.eventType !== 'string').length > 0) && (
+          <View className="mb-6">
+            {/* Tab Buttons */}
+            <View className="flex-row gap-2 mb-3">
+              <Pressable
+                onPress={() => setComparisonView('week')}
+                className={`flex-1 py-3 px-4 rounded-lg ${
+                  comparisonView === 'week'
+                    ? 'bg-[#0a0a0a] dark:bg-[#fafafa]'
+                    : 'bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626]'
+                }`}
+              >
+                <Text
+                  className={`text-center font-semibold ${
+                    comparisonView === 'week'
+                      ? 'text-white dark:text-[#0a0a0a]'
+                      : 'text-[#737373] dark:text-[#a3a3a3]'
+                  }`}
+                >
+                  Week
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setComparisonView('month')}
+                className={`flex-1 py-3 px-4 rounded-lg ${
+                  comparisonView === 'month'
+                    ? 'bg-[#0a0a0a] dark:bg-[#fafafa]'
+                    : 'bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626]'
+                }`}
+              >
+                <Text
+                  className={`text-center font-semibold ${
+                    comparisonView === 'month'
+                      ? 'text-white dark:text-[#0a0a0a]'
+                      : 'text-[#737373] dark:text-[#a3a3a3]'
+                  }`}
+                >
+                  Month
+                </Text>
+              </Pressable>
             </View>
-            <View className="mb-6">
-              <Skeleton className="w-48 h-8 rounded mb-3" />
-              {[1, 2, 3].map((i) => (
-                <View key={i} className="bg-card border border-border rounded-lg p-4 mb-3">
-                  <View className="flex-row items-center mb-3">
-                    <Skeleton className="w-3 h-3 rounded-full mr-2" />
-                    <Skeleton className="w-20 h-4 rounded" />
-                    <Skeleton className="w-3 h-3 rounded-full mx-2" />
-                    <Skeleton className="w-20 h-4 rounded" />
+
+            {/* Week Comparison */}
+            {comparisonView === 'week' && weekComparisons.length > 0 && (
+              <View>
+                <View className="flex-row items-center mb-3">
+                  <Icon as={TrendingUpIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
+                  <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
+                    This Week vs Last Week
+                  </Text>
+                </View>
+                <View className="gap-3">
+                  {weekComparisons.map((comp, index) => (
+                    <View
+                      key={index}
+                      className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4"
+                      style={{ borderLeftWidth: 4, borderLeftColor: comp.color }}
+                    >
+                      <Text className="text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa] mb-2">
+                        {comp.eventName}
+                      </Text>
+                      <View className="gap-2">
+                        <View className="flex-row items-center justify-between">
+                          <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Last Week</Text>
+                          <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">
+                            {comp.lastWeekAvg?.toFixed(1)}{comp.eventType === 'boolean' ? '%' : ''}
+                          </Text>
+                        </View>
+                        <View className="flex-row items-center justify-between">
+                          <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">This Week</Text>
+                          <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">
+                            {comp.thisWeekAvg?.toFixed(1)}{comp.eventType === 'boolean' ? '%' : ''}
+                          </Text>
+                        </View>
+                        {comp.change !== undefined && (
+                          <View className="flex-row items-center justify-between mt-1 pt-2 border-t border-[#e5e5e5] dark:border-[#262626]">
+                            <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Change</Text>
+                            <View className="flex-row items-center gap-1">
+                              {comp.trend === 'up' && (
+                                <Icon as={TrendingUpIcon} className="size-4 text-[#22c55e]" />
+                              )}
+                              {comp.trend === 'down' && (
+                                <Icon as={TrendingDownIcon} className="size-4 text-[#ef4444]" />
+                              )}
+                              <Text
+                                className={`text-base font-semibold ${
+                                  comp.trend === 'up'
+                                    ? 'text-[#22c55e]'
+                                    : comp.trend === 'down'
+                                    ? 'text-[#ef4444]'
+                                    : 'text-[#737373] dark:text-[#a3a3a3]'
+                                }`}
+                              >
+                                {comp.change > 0 ? '+' : ''}{comp.change.toFixed(1)}
+                                {comp.eventType === 'boolean' ? '%' : ''}
+                              </Text>
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Month Comparison */}
+            {comparisonView === 'month' && monthComparisons.filter(c => c.eventType !== 'string').length > 0 && (
+              <View>
+                <View className="flex-row items-center mb-3">
+                  <Icon as={CalendarIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
+                  <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
+                    This Month vs Last Month
+                  </Text>
+                </View>
+                <View className="gap-3">
+                  {monthComparisons.filter(c => c.eventType !== 'string').map((comp, index) => (
+                    <View
+                      key={index}
+                      className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4"
+                      style={{ borderLeftWidth: 4, borderLeftColor: comp.color }}
+                    >
+                      <Text className="text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa] mb-2">
+                        {comp.eventName}
+                      </Text>
+                      <View className="gap-2">
+                        <View className="flex-row items-center justify-between">
+                          <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Last Month</Text>
+                          <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">
+                            {comp.lastMonthAvg?.toFixed(1)}{comp.eventType === 'boolean' ? '%' : ''}
+                          </Text>
+                        </View>
+                        <View className="flex-row items-center justify-between">
+                          <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">This Month</Text>
+                          <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">
+                            {comp.thisMonthAvg?.toFixed(1)}{comp.eventType === 'boolean' ? '%' : ''}
+                          </Text>
+                        </View>
+                        {comp.change !== undefined && (
+                          <View className="flex-row items-center justify-between mt-1 pt-2 border-t border-[#e5e5e5] dark:border-[#262626]">
+                            <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Change</Text>
+                            <View className="flex-row items-center gap-1">
+                              {comp.trend === 'up' && (
+                                <Icon as={TrendingUpIcon} className="size-4 text-[#22c55e]" />
+                              )}
+                              {comp.trend === 'down' && (
+                                <Icon as={TrendingDownIcon} className="size-4 text-[#ef4444]" />
+                              )}
+                              <Text
+                                className={`text-base font-semibold ${
+                                  comp.trend === 'up'
+                                    ? 'text-[#22c55e]'
+                                    : comp.trend === 'down'
+                                    ? 'text-[#ef4444]'
+                                    : 'text-[#737373] dark:text-[#a3a3a3]'
+                                }`}
+                              >
+                                {comp.change > 0 ? '+' : ''}{comp.change.toFixed(1)}
+                                {comp.eventType === 'boolean' ? '%' : ''}
+                              </Text>
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Recommended Actions */}
+        {recommendations.length > 0 && (
+          <View className="mb-6">
+            <View className="flex-row items-center mb-3">
+              <Icon as={SparklesIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
+              <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
+                Recommendations
+              </Text>
+            </View>
+            <View className="gap-3">
+              {recommendations.map((rec, index) => (
+                <View
+                  key={index}
+                  className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4"
+                >
+                  <View className="flex-row items-start justify-between mb-2">
+                    <Text className="flex-1 text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa] mr-2">
+                      {rec.action}
+                    </Text>
+                    <View className="bg-[#22c55e]/10 px-2 py-1 rounded">
+                      <Text className="text-xs font-semibold text-[#22c55e]">
+                        {rec.confidence.toFixed(0)}%
+                      </Text>
+                    </View>
                   </View>
-                  <Skeleton className="w-full h-4 rounded mb-2" />
-                  <Skeleton className="w-3/4 h-4 rounded mb-3" />
-                  <View className="flex-row items-center justify-between">
-                    <Skeleton className="w-24 h-3 rounded" />
-                    <Skeleton className="w-20 h-3 rounded" />
-                  </View>
+                  <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">
+                    {rec.reason}
+                  </Text>
                 </View>
               ))}
             </View>
           </View>
-        ) : events.length === 0 ? (
-          <View className="items-center justify-center py-12">
-            <Text className="text-center text-muted-foreground mb-2">No events yet</Text>
-            <Text className="text-center text-sm text-muted-foreground">
-              Create events and track data to discover patterns
-            </Text>
-          </View>
-        ) : eventData.length === 0 ? (
-          <View className="items-center justify-center py-12">
-            <Text className="text-center text-muted-foreground mb-2">
-              Not enough data yet
-            </Text>
-            <Text className="text-center text-sm text-muted-foreground">
-              Track events for a few more days to see trends
-            </Text>
-          </View>
-        ) : (
-          <View>
-            {/* Time Range Selector */}
-            <View className="mb-6">
-              <Text className="text-2xl font-bold mb-3">📊 Trends</Text>
-              <View className="flex-row gap-2 mb-4">
-                <Button
-                  variant={timeRange === '7d' ? 'default' : 'outline'}
-                  size="sm"
-                  onPress={() => setTimeRange('7d')}
-                  className="flex-1"
-                >
-                  <Text className={timeRange === '7d' ? 'text-primary-foreground' : ''}>
-                    7 Days
-                  </Text>
-                </Button>
-                <Button
-                  variant={timeRange === '30d' ? 'default' : 'outline'}
-                  size="sm"
-                  onPress={() => setTimeRange('30d')}
-                  className="flex-1"
-                >
-                  <Text className={timeRange === '30d' ? 'text-primary-foreground' : ''}>
-                    30 Days
-                  </Text>
-                </Button>
-                <Button
-                  variant={timeRange === '90d' ? 'default' : 'outline'}
-                  size="sm"
-                  onPress={() => setTimeRange('90d')}
-                  className="flex-1"
-                >
-                  <Text className={timeRange === '90d' ? 'text-primary-foreground' : ''}>
-                    90 Days
-                  </Text>
-                </Button>
-                <Button
-                  variant={timeRange === '365d' ? 'default' : 'outline'}
-                  size="sm"
-                  onPress={() => setTimeRange('365d')}
-                  className="flex-1"
-                >
-                  <Text className={timeRange === '365d' ? 'text-primary-foreground' : ''}>
-                    1 Year
-                  </Text>
-                </Button>
-              </View>
-              <CombinedChart />
-            </View>
-
-            {/* Patterns Section - Always show, just indicate loading state */}
-            <View className="mb-6">
-              <Text className="text-2xl font-bold mb-1">🔍 Discovered Patterns</Text>
-              <Text className="text-muted-foreground mb-4">
-                {isAnalyzingPatterns ? 'Analyzing your data...' : 'Based on your tracked data'}
-              </Text>
-
-              {isAnalyzingPatterns ? (
-                /* Skeleton loading effect */
-                <>
-                  {[1, 2, 3].map((i) => (
-                    <View key={i} className="bg-card border border-border rounded-lg p-4 mb-3">
-                      <View className="flex-row items-center mb-3">
-                        <Skeleton className="w-3 h-3 rounded-full mr-2" />
-                        <Skeleton className="w-20 h-4 rounded" />
-                        <Skeleton className="w-3 h-3 rounded-full mx-2" />
-                        <Skeleton className="w-20 h-4 rounded" />
-                      </View>
-                      <Skeleton className="w-full h-4 rounded mb-2" />
-                      <Skeleton className="w-3/4 h-4 rounded mb-3" />
-                      <View className="flex-row items-center justify-between">
-                        <Skeleton className="w-24 h-3 rounded" />
-                        <Skeleton className="w-20 h-3 rounded" />
-                      </View>
-                    </View>
-                  ))}
-                </>
-              ) : patterns.length > 0 ? (
-                <>
-                  {patterns.map((pattern, index) => {
-                  // Create a map of event names to colors for quick lookup
-                  const eventColorMap: Record<string, string> = {};
-                  pattern.events.forEach(event => {
-                    eventColorMap[event.name] = event.color;
-                  });
-
-                  // Split description by arrows and render each part with color indicator
-                  const renderColoredDescription = () => {
-                    const parts = pattern.description.split(' → ');
-                    return parts.map((part, i) => {
-                      // Find which event this part belongs to
-                      let eventColor = '#999';
-                      for (const event of pattern.events) {
-                        if (part.includes(event.name)) {
-                          eventColor = event.color;
-                          break;
-                        }
-                      }
-
-                      // Split by percentage to add separator
-                      const percentMatch = part.match(/^(.+?)(\s+\d+%)$/);
-                      const mainText = percentMatch ? percentMatch[1].trim() : part.trim();
-                      const percentText = percentMatch ? percentMatch[2].trim() : null;
-
-                      return (
-                        <View key={i} className="flex-row items-center flex-wrap">
-                          {i > 0 && <Text className="text-muted-foreground mx-2">→</Text>}
-                          <View
-                            className="w-2 h-2 rounded-full mr-2"
-                            style={{ backgroundColor: eventColor }}
-                          />
-                          <Text className="text-base">{mainText}</Text>
-                          {percentText && (
-                            <>
-                              <Text className="text-muted-foreground mx-2">•</Text>
-                              <Text className="text-sm font-medium" style={{ color: '#888' }}>{percentText}</Text>
-                            </>
-                          )}
-                        </View>
-                      );
-                    });
-                  };
-
-                  return (
-                    <View
-                      key={index}
-                      className="bg-card border border-border rounded-lg p-4 mb-3"
-                    >
-                      {/* Pattern description with inline colors */}
-                      <View className="flex-row flex-wrap items-center mb-3">
-                        {renderColoredDescription()}
-                      </View>
-
-                      {/* Confidence indicator */}
-                      <View className="flex-row items-center justify-between">
-                        <View className="flex-row items-center">
-                          <Text className="text-xs text-muted-foreground mr-2">
-                            {getConfidenceLabel(pattern.confidence)}
-                          </Text>
-                          <Text className={`text-xs font-semibold ${getConfidenceColor(pattern.confidence)}`}>
-                            {pattern.confidence}%
-                          </Text>
-                        </View>
-                        <Text className="text-xs text-muted-foreground capitalize">
-                          {pattern.type.replace('-', ' ')}
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                })}
-                </>
-              ) : (
-                <Text className="text-sm text-muted-foreground">
-                  No clear patterns found yet. Keep tracking to discover insights!
-                </Text>
-              )}
-            </View>
-          </View>
         )}
+
+        {/* Summary Stats with Trends & Sparklines */}
+        <View className="mb-6">
+          <View className="flex-row items-center mb-3">
+            <Icon as={ActivityIcon} className="size-5 text-[#0a0a0a] dark:text-[#fafafa] mr-2" />
+            <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
+              Summary
+            </Text>
+          </View>
+
+          {/* Summary Time Range Tabs */}
+          <View className="flex-row gap-2 mb-3">
+            <Pressable
+              onPress={() => setSummaryView('7days')}
+              className={`flex-1 py-2 px-3 rounded-lg ${
+                summaryView === '7days'
+                  ? 'bg-[#0a0a0a] dark:bg-[#fafafa]'
+                  : 'bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626]'
+              }`}
+            >
+              <Text
+                className={`text-center text-sm font-semibold ${
+                  summaryView === '7days'
+                    ? 'text-white dark:text-[#0a0a0a]'
+                    : 'text-[#737373] dark:text-[#a3a3a3]'
+                }`}
+              >
+                7d
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setSummaryView('15days')}
+              className={`flex-1 py-2 px-3 rounded-lg ${
+                summaryView === '15days'
+                  ? 'bg-[#0a0a0a] dark:bg-[#fafafa]'
+                  : 'bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626]'
+              }`}
+            >
+              <Text
+                className={`text-center text-sm font-semibold ${
+                  summaryView === '15days'
+                    ? 'text-white dark:text-[#0a0a0a]'
+                    : 'text-[#737373] dark:text-[#a3a3a3]'
+                }`}
+              >
+                15d
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setSummaryView('1month')}
+              className={`flex-1 py-2 px-3 rounded-lg ${
+                summaryView === '1month'
+                  ? 'bg-[#0a0a0a] dark:bg-[#fafafa]'
+                  : 'bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626]'
+              }`}
+            >
+              <Text
+                className={`text-center text-sm font-semibold ${
+                  summaryView === '1month'
+                    ? 'text-white dark:text-[#0a0a0a]'
+                    : 'text-[#737373] dark:text-[#a3a3a3]'
+                }`}
+              >
+                1m
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setSummaryView('6months')}
+              className={`flex-1 py-2 px-3 rounded-lg ${
+                summaryView === '6months'
+                  ? 'bg-[#0a0a0a] dark:bg-[#fafafa]'
+                  : 'bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626]'
+              }`}
+            >
+              <Text
+                className={`text-center text-sm font-semibold ${
+                  summaryView === '6months'
+                    ? 'text-white dark:text-[#0a0a0a]'
+                    : 'text-[#737373] dark:text-[#a3a3a3]'
+                }`}
+              >
+                6m
+              </Text>
+            </Pressable>
+          </View>
+
+          {isSummaryLoading ? (
+            <View className="gap-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-32 w-full rounded-lg" />
+              ))}
+            </View>
+          ) : (
+            <View className="gap-3">
+              {summaryStats.map((stat, index) => (
+              <View
+                key={index}
+                className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4"
+                style={{ borderLeftWidth: 4, borderLeftColor: stat.color }}
+              >
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa]">
+                    {stat.eventName}
+                  </Text>
+                  {stat.trendData && stat.trendData.length > 1 && (
+                    <Sparkline data={stat.trendData} color={stat.color} />
+                  )}
+                </View>
+
+                {stat.eventType === 'boolean' && (
+                  <View className="gap-2">
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Completion Rate</Text>
+                      <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
+                        {stat.completionRate?.toFixed(0)}%
+                      </Text>
+                    </View>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Current Streak</Text>
+                      <Text className="text-base font-semibold text-[#f97316]">
+                        {stat.currentStreak} days
+                      </Text>
+                    </View>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Best Streak</Text>
+                      <Text className="text-base font-semibold text-[#22c55e]">
+                        {stat.bestStreak} days
+                      </Text>
+                    </View>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Consistency</Text>
+                      <Text className="text-sm font-semibold text-[#3b82f6]">
+                        {stat.consistency?.toFixed(0)}%
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {stat.eventType === 'number' && (
+                  <View className="gap-2">
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Average</Text>
+                      <Text className="text-lg font-bold text-[#0a0a0a] dark:text-[#fafafa]">
+                        {stat.average?.toFixed(1)} {stat.unit}
+                      </Text>
+                    </View>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Total</Text>
+                      <Text className="text-base font-semibold text-[#3b82f6]">
+                        {stat.total?.toFixed(1)} {stat.unit}
+                      </Text>
+                    </View>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Consistency</Text>
+                      <Text className="text-sm font-semibold text-[#3b82f6]">
+                        {stat.consistency?.toFixed(0)}%
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {stat.eventType === 'string' && stat.mostCommon && (
+                  <View className="gap-2">
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Most Common</Text>
+                      <Text className="text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa]">
+                        {stat.mostCommon}
+                      </Text>
+                    </View>
+                    <View className="flex-row items-center justify-between">
+                      <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">Consistency</Text>
+                      <Text className="text-sm font-semibold text-[#3b82f6]">
+                        {stat.consistency?.toFixed(0)}%
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+              ))}
+            </View>
+          )}
+        </View>
       </ScrollView>
-    </>
+    </View>
   );
 }

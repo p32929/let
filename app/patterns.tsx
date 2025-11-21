@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getEventValuesForDateRangeComplete } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
 import type { Event } from '@/types/events';
-import { isDefaultValue } from '@/lib/data-optimization';
+import { isPlaceholderValue } from '@/lib/data-optimization';
 import { Copy } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -94,10 +94,10 @@ export default function DashboardScreen() {
         const dataPromises = events.map(async (event) => {
           const values = await getEventValuesForDateRangeComplete(event.id, startStr, endStr, event.type);
 
-          // Filter out default values for pattern detection
-          const nonDefaultValues = values.filter(v => !isDefaultValue(v.value, event.type));
+          // Filter out placeholder values (id === -1 means not actually tracked)
+          const trackedValues = values.filter(v => !isPlaceholderValue(v));
 
-          const dataPoints: EventDataPoint[] = nonDefaultValues.map((v) => ({
+          const dataPoints: EventDataPoint[] = trackedValues.map((v) => ({
             date: v.date,
             value: event.type === 'string'
               ? v.value
