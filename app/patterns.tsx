@@ -180,45 +180,37 @@ export default function DashboardScreen() {
 
     const requestedDays = getDaysForRange(timeRange);
 
-    // Get actual date range from data
-    const allDates = new Set<string>();
-    eventData.forEach(({ dataPoints }) => {
-      dataPoints.forEach(d => allDates.add(d.date));
+    // Get dates that have at least one non-default value (EXCLUDE dates with only default values)
+    const datesWithData = new Set<string>();
+    eventData.forEach(({ event, dataPoints }) => {
+      dataPoints.forEach(d => {
+        if (!isDefaultValue(String(d.value), event.type)) {
+          datesWithData.add(d.date);
+        }
+      });
     });
 
-    if (allDates.size === 0) {
+    if (datesWithData.size === 0) {
       setChartData([]);
       return;
     }
 
-    // Find the oldest and newest dates in the actual data
-    const sortedDates = Array.from(allDates).sort();
+    // Find the oldest and newest dates with actual data (not default values)
+    const sortedDates = Array.from(datesWithData).sort();
     const oldestDate = sortedDates[0];
     const newestDate = sortedDates[sortedDates.length - 1];
 
-    console.log('=== CHART DATE FILTERING DEBUG ===');
-    console.log('Time Range:', timeRange);
-    console.log('Requested Days:', requestedDays);
-    console.log('Oldest Date in Data:', oldestDate);
-    console.log('Newest Date in Data:', newestDate);
-
     // Calculate cutoff date, but never go before the oldest actual data date
     const requestedCutoff = format(subDays(parseISO(newestDate), requestedDays - 1), 'yyyy-MM-dd');
-    console.log('Requested Cutoff (going back from newest):', requestedCutoff);
-
     const cutoffDate = requestedCutoff < oldestDate ? oldestDate : requestedCutoff;
-    console.log('Final Cutoff Date (clamped to oldest):', cutoffDate);
 
+    // Filter to only include dates >= cutoffDate AND dates with non-default values
     const filteredChartData = eventData.map(({ event, dataPoints }) => ({
       event,
-      dataPoints: dataPoints.filter((point) => point.date >= cutoffDate),
+      dataPoints: dataPoints.filter((point) =>
+        point.date >= cutoffDate && datesWithData.has(point.date)
+      ),
     }));
-
-    console.log('Filtered Chart Data Points:', filteredChartData.map(d => ({
-      event: d.event.name,
-      dates: d.dataPoints.map(p => p.date)
-    })));
-    console.log('=================================');
 
     setChartData(filteredChartData);
   }, [eventData, timeRange]);
@@ -636,13 +628,6 @@ export default function DashboardScreen() {
         ...stringEvents.flatMap((d) => d.dataPoints.map((p) => p.date))
       ])
     ).sort();
-
-    console.log('=== CHART RENDERING DEBUG ===');
-    console.log('Chart Data Length:', chartData.length);
-    console.log('Numeric Events:', numericEvents.map(d => ({ name: d.event.name, points: d.dataPoints.length })));
-    console.log('String Events:', stringEvents.map(d => ({ name: d.event.name, points: d.dataPoints.length })));
-    console.log('All Dates for Chart:', allDates);
-    console.log('============================');
 
     // Create mapping for string values to numbers
     const stringValueMappings: Record<string, { values: string[]; colorMap: Record<string, string> }> = {};
