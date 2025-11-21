@@ -10,8 +10,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getEventValuesForDateRangeComplete } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
 import type { Event } from '@/types/events';
-import { isDefaultValue } from '@/lib/data-optimization';
-import { discoverPatterns as discoverPatternsLib, type Pattern } from '@/lib/pattern-discovery';
 import { Copy } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -37,6 +35,17 @@ interface EventDataPoint {
 // Smart number formatting - shows integers without decimals, decimals when needed
 function formatNumber(num: number): string {
   return Number.isInteger(num) ? num.toString() : num.toFixed(1);
+}
+
+type PatternStrength = 'weak' | 'moderate' | 'strong' | 'very-strong';
+
+interface Pattern {
+  description: string;
+  confidence: number; // 0-100%
+  type: 'co-occurrence';
+  events: Event[];
+  strength: PatternStrength;
+  sampleSize: number;
 }
 
 type TimeRange = '7d' | '30d' | '90d' | '365d';
@@ -75,19 +84,15 @@ export default function DashboardScreen() {
       setIsLoading(true);
       try {
         const endDate = new Date();
-
-        // Use last 365 days for pattern detection (reasonable range)
-        const startStr = format(subDays(endDate, 365), 'yyyy-MM-dd');
+        const startDate = subDays(endDate, 365); // Load 1 year for pattern detection
+        const startStr = format(startDate, 'yyyy-MM-dd');
         const endStr = format(endDate, 'yyyy-MM-dd');
 
         // Load all data for pattern detection
         const dataPromises = events.map(async (event) => {
           const values = await getEventValuesForDateRangeComplete(event.id, startStr, endStr, event.type);
 
-          // Filter out default values for pattern detection
-          const nonDefaultValues = values.filter(v => !isDefaultValue(v.value, event.type));
-
-          const dataPoints: EventDataPoint[] = nonDefaultValues.map((v) => ({
+          const dataPoints: EventDataPoint[] = values.map((v) => ({
             date: v.date,
             value: event.type === 'string'
               ? v.value
@@ -112,7 +117,7 @@ export default function DashboardScreen() {
         requestAnimationFrame(() => {
           setTimeout(() => {
             try {
-              const discoveredPatterns = discoverPatternsLib(allData);
+              const discoveredPatterns = discoverPatterns(allData);
               setPatterns(discoveredPatterns);
             } catch (error) {
               console.error('Failed to discover patterns:', error);
@@ -152,6 +157,313 @@ export default function DashboardScreen() {
     setChartData(filteredChartData);
   }, [eventData, timeRange]);
 
+  // Helper function to calculate pattern strength
+  const calculateStrength = (confidence: number): PatternStrength => {
+    if (confidence >= 90) return 'very-strong';
+    if (confidence >= 80) return 'strong';
+    if (confidence >= 65) return 'moderate';
+    return 'weak';
+  };
+
+  const discoverPatterns = (
+    allData: { event: Event; dataPoints: EventDataPoint[] }[]
+  ): Pattern[] => {
+    if (allData.length < 2) return [];
+
+    // Sort events by their order property to ensure consistent ordering
+    const sortedData = [...allData].sort((a, b) => a.event.order - b.event.order);
+
+    // Find the FIRST numeric event to use as the primary grouping mechanism
+    const primaryEvent = sortedData.find(d => d.event.type === 'number');
+    if (!primaryEvent) return [];
+
+    const primaryData = allData.find(d => d.event.id === primaryEvent.event.id);
+    if (!primaryData) return [];
+
+    const numericValues = primaryData.dataPoints
+      .filter(d => typeof d.value === 'number' && d.value > 0)
+      .map(d => ({ date: d.date, value: d.value as number }));
+
+    if (numericValues.length < 10) return [];
+
+    const values = numericValues.map(d => d.value);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min;
+
+    if (range < 1) return [];
+
+    // Create 3 buckets based on the FIRST event
+    const bucketSize = range / 3;
+    const buckets = [
+      { name: 'low', min, max: min + bucketSize, dates: [] as string[] },
+      { name: 'mid', min: min + bucketSize, max: min + (bucketSize * 2), dates: [] as string[] },
+      { name: 'high', min: min + (bucketSize * 2), max, dates: [] as string[] },
+    ];
+
+    for (const { date, value } of numericValues) {
+      if (value < buckets[0].max) buckets[0].dates.push(date);
+      else if (value < buckets[1].max) buckets[1].dates.push(date);
+      else buckets[2].dates.push(date);
+    }
+
+    // Store pattern data for each bucket with full details
+    interface BucketPattern {
+      bucket: string;
+      parts: Array<{
+        eventName: string;
+        eventId: number;
+        eventType: string;
+        primaryRange?: { min: number; max: number; unit: string };
+        booleanRate?: number;
+        booleanPositive?: boolean;
+        stringValue?: string;
+        stringPct?: number;
+        numberRange?: { min: number; max: number; unit: string };
+        numberAvg?: number;
+      }>;
+      relatedEvents: Event[];
+      sampleSize: number;
+    }
+
+    const bucketPatterns: BucketPattern[] = [];
+
+    // For each bucket, build detailed pattern data
+    for (const bucket of buckets) {
+      if (bucket.dates.length < 2) continue;
+
+      const parts: BucketPattern['parts'] = [];
+      const relatedEvents: Event[] = [];
+
+      // Iterate through ALL events in their original order
+      for (const { event, dataPoints } of sortedData) {
+        const matchingData = bucket.dates
+          .map(date => dataPoints.find(d => d.date === date))
+          .filter(d => d);
+
+        if (matchingData.length === 0) continue;
+
+        if (event.type === 'boolean') {
+          const trueCount = matchingData.filter(d => d && (d.value === 'true' || d.value === 1)).length;
+          const rate = (trueCount / matchingData.length) * 100;
+
+          parts.push({
+            eventName: event.name,
+            eventId: event.id,
+            eventType: 'boolean',
+            booleanRate: rate,
+            booleanPositive: rate >= 50,
+          });
+          relatedEvents.push(event);
+        } else if (event.type === 'number') {
+          const numValues = matchingData
+            .filter(d => d && (typeof d.value === 'number' || !isNaN(parseFloat(String(d.value)))))
+            .map(d => d && typeof d.value === 'number' ? d.value : parseFloat(String(d!.value)));
+
+          if (numValues.length > 0) {
+            const avg = numValues.reduce((a, b) => a + b, 0) / numValues.length;
+            const minVal = Math.min(...numValues);
+            const maxVal = Math.max(...numValues);
+            const unit = event.unit || '';
+
+            // Store range data for the primary event
+            if (event.id === primaryEvent.event.id) {
+              parts.push({
+                eventName: event.name,
+                eventId: event.id,
+                eventType: 'number',
+                primaryRange: { min: bucket.min, max: bucket.max, unit },
+              });
+            } else {
+              parts.push({
+                eventName: event.name,
+                eventId: event.id,
+                eventType: 'number',
+                numberRange: { min: minVal, max: maxVal, unit },
+                numberAvg: avg,
+              });
+            }
+            relatedEvents.push(event);
+          }
+        } else if (event.type === 'string') {
+          const strValues = matchingData
+            .filter(d => d && d.value && String(d.value).trim())
+            .map(d => String(d!.value).trim().toLowerCase());
+
+          if (strValues.length > 0) {
+            const freq: Record<string, number> = {};
+            strValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
+            const total = strValues.length;
+
+            const topValue = Object.entries(freq)
+              .map(([value, count]) => ({ value, pct: (count / total) * 100 }))
+              .sort((a, b) => b.pct - a.pct)[0];
+
+            if (topValue) {
+              parts.push({
+                eventName: event.name,
+                eventId: event.id,
+                eventType: 'string',
+                stringValue: topValue.value,
+                stringPct: topValue.pct,
+              });
+              relatedEvents.push(event);
+            }
+          }
+        }
+      }
+
+      if (parts.length >= 1) {
+        bucketPatterns.push({
+          bucket: bucket.name,
+          parts,
+          relatedEvents,
+          sampleSize: bucket.dates.length,
+        });
+      }
+    }
+
+    // Now merge similar patterns with ranges
+    const mergedPatterns: Pattern[] = [];
+
+    if (bucketPatterns.length === 0) return [];
+
+    // Group patterns by their "signature" (same events in same order, same trend)
+    interface PatternGroup {
+      signature: string;
+      patterns: BucketPattern[];
+    }
+
+    const groups = new Map<string, PatternGroup>();
+
+    for (const bucketPattern of bucketPatterns) {
+      // Create signature based on event sequence and trends
+      const signature = bucketPattern.parts
+        .map(part => {
+          if (part.eventType === 'boolean') {
+            return `${part.eventName}:${part.booleanPositive ? 'yes' : 'no'}`;
+          } else if (part.eventType === 'string') {
+            return `${part.eventName}:${part.stringValue}`;
+          } else {
+            return `${part.eventName}:number`;
+          }
+        })
+        .join('→');
+
+      if (!groups.has(signature)) {
+        groups.set(signature, { signature, patterns: [] });
+      }
+      groups.get(signature)!.patterns.push(bucketPattern);
+    }
+
+    // Build merged pattern descriptions with ranges
+    for (const group of groups.values()) {
+      const mergedParts: string[] = [];
+      const allRelatedEvents = group.patterns[0].relatedEvents;
+      const totalSampleSize = group.patterns.reduce((sum, p) => sum + p.sampleSize, 0);
+
+      // Get all parts from first pattern as template
+      const templateParts = group.patterns[0].parts;
+
+      for (let i = 0; i < templateParts.length; i++) {
+        const part = templateParts[i];
+
+        if (part.eventType === 'boolean') {
+          // Collect all boolean rates from all patterns
+          const rates = group.patterns
+            .map(p => p.parts[i]?.booleanRate)
+            .filter(r => r !== undefined) as number[];
+
+          if (rates.length > 0) {
+            const minRate = Math.min(...rates);
+            const maxRate = Math.max(...rates);
+
+            if (part.booleanPositive) {
+              if (minRate === maxRate) {
+                mergedParts.push(`${part.eventName} ${minRate.toFixed(0)}%`);
+              } else {
+                mergedParts.push(`${part.eventName} ${minRate.toFixed(0)}-${maxRate.toFixed(0)}%`);
+              }
+            } else {
+              if (minRate === maxRate) {
+                mergedParts.push(`No ${part.eventName} ${(100 - minRate).toFixed(0)}%`);
+              } else {
+                mergedParts.push(`No ${part.eventName} ${(100 - maxRate).toFixed(0)}-${(100 - minRate).toFixed(0)}%`);
+              }
+            }
+          }
+        } else if (part.eventType === 'number') {
+          if (part.primaryRange) {
+            // Primary event - show the overall range across all buckets
+            const allRanges = group.patterns
+              .map(p => p.parts[i]?.primaryRange)
+              .filter(r => r !== undefined) as Array<{ min: number; max: number; unit: string }>;
+
+            if (allRanges.length > 0) {
+              const overallMin = Math.min(...allRanges.map(r => r.min));
+              const overallMax = Math.max(...allRanges.map(r => r.max));
+              const unit = part.primaryRange.unit ? ` ${part.primaryRange.unit}` : '';
+
+              if (overallMax - overallMin > 0.1) {
+                mergedParts.push(`${part.eventName} ${formatNumber(overallMin)}-${formatNumber(overallMax)}${unit}`);
+              } else {
+                mergedParts.push(`${part.eventName} ~${formatNumber(overallMin)}${unit}`);
+              }
+            }
+          } else if (part.numberRange) {
+            // Secondary number events - show ranges
+            const allRanges = group.patterns
+              .map(p => p.parts[i]?.numberRange)
+              .filter(r => r !== undefined) as Array<{ min: number; max: number; unit: string }>;
+
+            if (allRanges.length > 0) {
+              const overallMin = Math.min(...allRanges.map(r => r.min));
+              const overallMax = Math.max(...allRanges.map(r => r.max));
+              const unit = part.numberRange.unit ? ` ${part.numberRange.unit}` : '';
+
+              if (overallMax - overallMin > 0.1) {
+                mergedParts.push(`${part.eventName} ${formatNumber(overallMin)}-${formatNumber(overallMax)}${unit}`);
+              } else {
+                const avgVal = (overallMin + overallMax) / 2;
+                mergedParts.push(`${part.eventName} ~${formatNumber(avgVal)}${unit}`);
+              }
+            }
+          }
+        } else if (part.eventType === 'string') {
+          // String events - show value with percentage range
+          const allPcts = group.patterns
+            .map(p => p.parts[i]?.stringPct)
+            .filter(pct => pct !== undefined) as number[];
+
+          if (allPcts.length > 0 && part.stringValue) {
+            const minPct = Math.min(...allPcts);
+            const maxPct = Math.max(...allPcts);
+
+            if (minPct === maxPct) {
+              mergedParts.push(`${part.eventName}: ${part.stringValue} ${minPct.toFixed(0)}%`);
+            } else {
+              mergedParts.push(`${part.eventName}: ${part.stringValue} ${minPct.toFixed(0)}-${maxPct.toFixed(0)}%`);
+            }
+          }
+        }
+      }
+
+      if (mergedParts.length >= 1) {
+        const confidence = Math.min(95, 50 + mergedParts.length * 5);
+        mergedPatterns.push({
+          description: mergedParts.join(' → '),
+          confidence,
+          type: 'co-occurrence',
+          events: allRelatedEvents,
+          strength: calculateStrength(confidence),
+          sampleSize: totalSampleSize,
+        });
+      }
+    }
+
+    // Return ALL patterns sorted by confidence (highest first)
+    return mergedPatterns.sort((a, b) => b.confidence - a.confidence);
+  };
 
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 80) return 'text-green-600';
