@@ -171,7 +171,7 @@ export default function DashboardScreen() {
     }
   }, [events]);
 
-  // Filter chart data based on selected time range
+  // Filter chart data based on selected time range (excluding default values)
   React.useEffect(() => {
     if (eventData.length === 0) {
       setChartData([]);
@@ -183,7 +183,9 @@ export default function DashboardScreen() {
 
     const filteredChartData = eventData.map(({ event, dataPoints }) => ({
       event,
-      dataPoints: dataPoints.filter((point) => point.date >= cutoffDate),
+      dataPoints: dataPoints.filter((point) =>
+        point.date >= cutoffDate && !isDefaultValue(String(point.value), event.type)
+      ),
     }));
 
     setChartData(filteredChartData);
