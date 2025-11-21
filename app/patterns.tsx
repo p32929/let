@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/alert-dialog';
 
 // React Native SVG - True cross-platform charting
-import Svg, { Line as SvgLine, Circle, G } from 'react-native-svg';
+import Svg, { Line as SvgLine, Circle, G, Text as SvgText } from 'react-native-svg';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -171,22 +171,54 @@ export default function DashboardScreen() {
     }
   }, [events]);
 
-  // Filter chart data based on selected time range (excluding default values)
+  // Filter chart data based on selected time range
   React.useEffect(() => {
     if (eventData.length === 0) {
       setChartData([]);
       return;
     }
 
-    const days = getDaysForRange(timeRange);
-    const cutoffDate = format(subDays(new Date(), days), 'yyyy-MM-dd');
+    const requestedDays = getDaysForRange(timeRange);
+
+    // Get actual date range from data
+    const allDates = new Set<string>();
+    eventData.forEach(({ dataPoints }) => {
+      dataPoints.forEach(d => allDates.add(d.date));
+    });
+
+    if (allDates.size === 0) {
+      setChartData([]);
+      return;
+    }
+
+    // Find the oldest and newest dates in the actual data
+    const sortedDates = Array.from(allDates).sort();
+    const oldestDate = sortedDates[0];
+    const newestDate = sortedDates[sortedDates.length - 1];
+
+    console.log('=== CHART DATE FILTERING DEBUG ===');
+    console.log('Time Range:', timeRange);
+    console.log('Requested Days:', requestedDays);
+    console.log('Oldest Date in Data:', oldestDate);
+    console.log('Newest Date in Data:', newestDate);
+
+    // Calculate cutoff date, but never go before the oldest actual data date
+    const requestedCutoff = format(subDays(parseISO(newestDate), requestedDays - 1), 'yyyy-MM-dd');
+    console.log('Requested Cutoff (going back from newest):', requestedCutoff);
+
+    const cutoffDate = requestedCutoff < oldestDate ? oldestDate : requestedCutoff;
+    console.log('Final Cutoff Date (clamped to oldest):', cutoffDate);
 
     const filteredChartData = eventData.map(({ event, dataPoints }) => ({
       event,
-      dataPoints: dataPoints.filter((point) =>
-        point.date >= cutoffDate && !isDefaultValue(String(point.value), event.type)
-      ),
+      dataPoints: dataPoints.filter((point) => point.date >= cutoffDate),
     }));
+
+    console.log('Filtered Chart Data Points:', filteredChartData.map(d => ({
+      event: d.event.name,
+      dates: d.dataPoints.map(p => p.date)
+    })));
+    console.log('=================================');
 
     setChartData(filteredChartData);
   }, [eventData, timeRange]);
@@ -279,27 +311,51 @@ export default function DashboardScreen() {
       const parts: BucketPattern['parts'] = [];
       const relatedEvents: Event[] = [];
 
-      // Iterate through ALL events in their original order
+      // FIRST PASS: Find boolean events and determine predominant state
+      let filteredDates = bucket.dates;
       for (const { event, dataPoints } of sortedData) {
-        const matchingData = bucket.dates
+        if (event.type === 'boolean') {
+          const matchingData = bucket.dates
+            .map(date => dataPoints.find(d => d.date === date))
+            .filter(d => d);
+
+          if (matchingData.length > 0) {
+            const trueCount = matchingData.filter(d => d && (d.value === 'true' || d.value === 1)).length;
+            const rate = (trueCount / matchingData.length) * 100;
+            const isPositive = rate >= 50;
+
+            // Filter dates to only include those matching the predominant boolean state
+            filteredDates = bucket.dates.filter(date => {
+              const dataPoint = dataPoints.find(d => d.date === date);
+              if (!dataPoint) return !isPositive; // Missing = false
+              const isTrue = dataPoint.value === 'true' || dataPoint.value === 1;
+              return isTrue === isPositive;
+            });
+
+            parts.push({
+              eventName: event.name,
+              eventId: event.id,
+              eventType: 'boolean',
+              booleanRate: rate,
+              booleanPositive: isPositive,
+            });
+            relatedEvents.push(event);
+            break; // Only use first boolean event for filtering
+          }
+        }
+      }
+
+      // SECOND PASS: Collect other events using filtered dates
+      for (const { event, dataPoints } of sortedData) {
+        if (event.type === 'boolean') continue; // Already processed
+
+        const matchingData = filteredDates
           .map(date => dataPoints.find(d => d.date === date))
           .filter(d => d);
 
         if (matchingData.length === 0) continue;
 
-        if (event.type === 'boolean') {
-          const trueCount = matchingData.filter(d => d && (d.value === 'true' || d.value === 1)).length;
-          const rate = (trueCount / matchingData.length) * 100;
-
-          parts.push({
-            eventName: event.name,
-            eventId: event.id,
-            eventType: 'boolean',
-            booleanRate: rate,
-            booleanPositive: rate >= 50,
-          });
-          relatedEvents.push(event);
-        } else if (event.type === 'number') {
+        if (event.type === 'number') {
           const numValues = matchingData
             .filter(d => d && (typeof d.value === 'number' || !isNaN(parseFloat(String(d.value)))))
             .map(d => d && typeof d.value === 'number' ? d.value : parseFloat(String(d!.value)));
@@ -364,7 +420,7 @@ export default function DashboardScreen() {
           bucket: bucket.name,
           parts,
           relatedEvents,
-          sampleSize: bucket.dates.length,
+          sampleSize: filteredDates.length,
         });
       }
     }
@@ -491,21 +547,12 @@ export default function DashboardScreen() {
           if (allStringValues.length > 0) {
             const uniqueValues = [...new Set(allStringValues)];
 
-            // Check if string values are numeric (like "1", "2", "5")
-            const allNumeric = uniqueValues.every(v => !isNaN(Number(v)));
-
-            if (allNumeric && uniqueValues.length > 1) {
-              // Show as numeric range
-              const nums = uniqueValues.map(v => Number(v)).sort((a, b) => a - b);
-              const minVal = nums[0];
-              const maxVal = nums[nums.length - 1];
-              mergedParts.push(`${part.eventName}: ${minVal}-${maxVal}`);
-            } else if (uniqueValues.length === 1) {
-              // Single value - no percentage needed when showing all values
+            if (uniqueValues.length === 1) {
+              // Single value
               mergedParts.push(`${part.eventName}: ${uniqueValues[0]}`);
             } else {
-              // Multiple non-numeric values - show as list (all values)
-              const displayValues = uniqueValues.join('/');
+              // Multiple values - show as comma-separated list
+              const displayValues = uniqueValues.join(', ');
               mergedParts.push(`${part.eventName}: ${displayValues}`);
             }
           }
@@ -590,6 +637,13 @@ export default function DashboardScreen() {
       ])
     ).sort();
 
+    console.log('=== CHART RENDERING DEBUG ===');
+    console.log('Chart Data Length:', chartData.length);
+    console.log('Numeric Events:', numericEvents.map(d => ({ name: d.event.name, points: d.dataPoints.length })));
+    console.log('String Events:', stringEvents.map(d => ({ name: d.event.name, points: d.dataPoints.length })));
+    console.log('All Dates for Chart:', allDates);
+    console.log('============================');
+
     // Create mapping for string values to numbers
     const stringValueMappings: Record<string, { values: string[]; colorMap: Record<string, string> }> = {};
     stringEvents.forEach(({ event, dataPoints }) => {
@@ -616,16 +670,25 @@ export default function DashboardScreen() {
 
       numericEvents.forEach(({ event, dataPoints }) => {
         const point = dataPoints.find((p) => p.date === date);
-        if (point && typeof point.value === 'number') {
-          // Normalize to 0-100 scale
-          const values = dataPoints.map((d) => typeof d.value === 'number' ? d.value : 0);
-          const min = Math.min(...values);
-          const max = Math.max(...values);
-          const range = max - min || 1;
-          const normalized = ((point.value - min) / range) * 100;
+        if (point !== undefined) {
+          // Handle boolean values
+          if (event.type === 'boolean') {
+            const boolValue = point.value === 'true' || point.value === 1 || String(point.value) === 'true';
+            dataPoint[event.name] = boolValue ? 100 : 0; // True = 100%, False = 0%
+            dataPoint[`${event.name}_original`] = boolValue ? 'Yes' : 'No';
+          }
+          // Handle numeric values
+          else if (typeof point.value === 'number') {
+            // Normalize to 0-100 scale
+            const values = dataPoints.map((d) => typeof d.value === 'number' ? d.value : 0);
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const range = max - min || 1;
+            const normalized = ((point.value - min) / range) * 100;
 
-          dataPoint[event.name] = normalized;
-          dataPoint[`${event.name}_original`] = point.value;
+            dataPoint[event.name] = normalized;
+            dataPoint[`${event.name}_original`] = point.value;
+          }
         }
       });
 
@@ -656,7 +719,7 @@ export default function DashboardScreen() {
       <View className="bg-card border border-border rounded-lg p-4 mb-4">
         <Text className="font-semibold text-lg mb-2">All Events Combined</Text>
         <Text className="text-sm text-muted-foreground mb-4">
-          Normalized view to see patterns (scrollable){stringEvents.length > 0 ? ' • Dashed lines = text events' : ''}
+          Normalized to compare trends{stringEvents.length > 0 ? ' • Labeled dots = text values' : ''} • Tap for details
         </Text>
 
         <View className="mb-4">
@@ -672,16 +735,16 @@ export default function DashboardScreen() {
           </View>
 
           {/* Combined chart with all lines - Custom SVG (True cross-platform) */}
-          <View style={{ height: 250, width: '100%' }}>
+          <View style={{ height: 280, width: '100%' }}>
             <ScrollView horizontal showsHorizontalScrollIndicator>
               <View
                 ref={chartRef}
-                style={{ width: Math.max(screenWidth - 32, combinedChartData.length * 50), height: 250 }}
+                style={{ width: Math.max(screenWidth - 32, combinedChartData.length * 50), height: 280 }}
               >
-                <Svg width={Math.max(screenWidth - 32, combinedChartData.length * 50)} height={250}>
+                <Svg width={Math.max(screenWidth - 32, combinedChartData.length * 50)} height={280}>
                   <G>
-                    {/* Render lines for each event */}
-                    {[...numericEvents, ...stringEvents].map(({ event }) => {
+                    {/* Render lines for numeric/boolean events */}
+                    {numericEvents.map(({ event }) => {
                       // Create path points for this event's line
                       const points: Array<{ x: number; y: number }> = [];
 
@@ -723,6 +786,79 @@ export default function DashboardScreen() {
                             />
                           ))}
                         </G>
+                      );
+                    })}
+
+                    {/* Render string events as labeled dots (no lines) */}
+                    {stringEvents.map(({ event }) => {
+                      return (
+                        <G key={event.id}>
+                          {combinedChartData.map((dataPoint, index) => {
+                            const value = dataPoint[event.name];
+                            if (value === undefined || value === null) return null;
+
+                            const x = 40 + (index * (Math.max(screenWidth - 72, combinedChartData.length * 50 - 40) / (combinedChartData.length - 1)));
+                            const y = 210 - (value * 1.8);
+                            const originalValue = dataPoint[`${event.name}_original`] || '';
+
+                            return (
+                              <G key={`${event.id}-point-${index}`}>
+                                {/* Larger circle for string events */}
+                                <Circle
+                                  cx={x}
+                                  cy={y}
+                                  r={6}
+                                  fill={event.color}
+                                />
+                                {/* Text label with the actual string value */}
+                                <SvgText
+                                  x={x}
+                                  y={y - 12}
+                                  fontSize={9}
+                                  fill={event.color}
+                                  textAnchor="middle"
+                                  fontWeight="bold"
+                                >
+                                  {originalValue}
+                                </SvgText>
+                              </G>
+                            );
+                          })}
+                        </G>
+                      );
+                    })}
+
+                    {/* Y-axis grid lines */}
+                    {[0, 25, 50, 75, 100].map((value) => {
+                      const y = 210 - (value * 1.8);
+                      return (
+                        <SvgLine
+                          key={`grid-${value}`}
+                          x1={35}
+                          y1={y}
+                          x2={Math.max(screenWidth - 32, combinedChartData.length * 50)}
+                          y2={y}
+                          stroke="#e5e7eb"
+                          strokeWidth={1}
+                          opacity={0.5}
+                        />
+                      );
+                    })}
+
+                    {/* X-axis date labels */}
+                    {combinedChartData.map((dataPoint, index) => {
+                      const x = 40 + (index * (Math.max(screenWidth - 72, combinedChartData.length * 50 - 40) / (combinedChartData.length - 1)));
+                      return (
+                        <SvgText
+                          key={`date-${index}`}
+                          x={x}
+                          y={240}
+                          fontSize={10}
+                          fill="#666"
+                          textAnchor="middle"
+                        >
+                          {dataPoint.date}
+                        </SvgText>
                       );
                     })}
                   </G>
