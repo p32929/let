@@ -126,9 +126,14 @@ export async function importData(data: ExportData, options: {
       idMapping[i] = newEvent.id;
 
       onProgress?.(
-        20 + Math.floor((i / data.events.length) * 30),
+        20 + Math.floor(((i + 1) / data.events.length) * 30),
         `Importing events: ${i + 1}/${data.events.length}`
       );
+
+      // Small delay to allow UI to update
+      if (i % 5 === 0) {
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
     }
 
     onProgress?.(50, 'Importing event values...');
@@ -149,10 +154,14 @@ export async function importData(data: ExportData, options: {
         })
       );
 
+      const currentProgress = Math.min(i + batchSize, totalValues);
       onProgress?.(
-        50 + Math.floor((i / totalValues) * 40),
-        `Importing values: ${Math.min(i + batchSize, totalValues)}/${totalValues}`
+        50 + Math.floor((currentProgress / totalValues) * 40),
+        `Importing values: ${currentProgress}/${totalValues}`
       );
+
+      // Small delay to allow UI to update
+      await new Promise(resolve => setTimeout(resolve, 0));
     }
 
     onProgress?.(90, 'Restoring settings...');

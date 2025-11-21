@@ -253,8 +253,16 @@ export default function HomeScreen() {
       });
 
       if (result.success) {
+        setImportProgress(95);
         setImportMessage('Reloading events...');
         await loadEvents();
+
+        setImportProgress(100);
+        setImportMessage('Import complete!');
+
+        // Keep dialog open for 1.5 seconds to show completion
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
         setShowImportDialog(false);
         setClearExisting(false);
       } else {
