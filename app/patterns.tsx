@@ -260,7 +260,8 @@ export default function DashboardScreen() {
         primaryRange?: { min: number; max: number; unit: string };
         booleanRate?: number;
         booleanPositive?: boolean;
-        stringValue?: string;
+        stringValues?: string[]; // Changed to array to store ALL values
+        stringValue?: string; // Kept for backward compatibility
         stringPct?: number;
         numberRange?: { min: number; max: number; unit: string };
         numberAvg?: number;
@@ -334,24 +335,26 @@ export default function DashboardScreen() {
             .map(d => String(d!.value).trim().toLowerCase());
 
           if (strValues.length > 0) {
+            // Get all unique values
+            const uniqueValues = [...new Set(strValues)];
+
+            // Also calculate frequency for backward compatibility
             const freq: Record<string, number> = {};
             strValues.forEach(v => freq[v] = (freq[v] || 0) + 1);
             const total = strValues.length;
-
             const topValue = Object.entries(freq)
               .map(([value, count]) => ({ value, pct: (count / total) * 100 }))
               .sort((a, b) => b.pct - a.pct)[0];
 
-            if (topValue) {
-              parts.push({
-                eventName: event.name,
-                eventId: event.id,
-                eventType: 'string',
-                stringValue: topValue.value,
-                stringPct: topValue.pct,
-              });
-              relatedEvents.push(event);
-            }
+            parts.push({
+              eventName: event.name,
+              eventId: event.id,
+              eventType: 'string',
+              stringValues: uniqueValues, // Store ALL unique values
+              stringValue: topValue.value, // Keep for compatibility
+              stringPct: topValue.pct,
+            });
+            relatedEvents.push(event);
           }
         }
       }
@@ -473,13 +476,20 @@ export default function DashboardScreen() {
             }
           }
         } else if (part.eventType === 'string') {
-          // String events - collect all unique values and show as range/list
-          const allStringData = group.patterns
-            .map(p => p.parts[i])
-            .filter(p => p?.stringValue) as Array<{ stringValue: string; stringPct: number }>;
+          // String events - collect ALL unique values from all patterns
+          const allStringValues: string[] = [];
+          group.patterns.forEach(p => {
+            const stringPart = p.parts[i];
+            if (stringPart?.stringValues) {
+              allStringValues.push(...stringPart.stringValues);
+            } else if (stringPart?.stringValue) {
+              // Fallback for backward compatibility
+              allStringValues.push(stringPart.stringValue);
+            }
+          });
 
-          if (allStringData.length > 0) {
-            const uniqueValues = [...new Set(allStringData.map(d => d.stringValue))];
+          if (allStringValues.length > 0) {
+            const uniqueValues = [...new Set(allStringValues)];
 
             // Check if string values are numeric (like "1", "2", "5")
             const allNumeric = uniqueValues.every(v => !isNaN(Number(v)));
@@ -491,10 +501,8 @@ export default function DashboardScreen() {
               const maxVal = nums[nums.length - 1];
               mergedParts.push(`${part.eventName}: ${minVal}-${maxVal}`);
             } else if (uniqueValues.length === 1) {
-              // Single value - show with percentage if available
-              const pcts = allStringData.map(d => d.stringPct);
-              const avgPct = pcts.reduce((a, b) => a + b, 0) / pcts.length;
-              mergedParts.push(`${part.eventName}: ${uniqueValues[0]} ${avgPct.toFixed(0)}%`);
+              // Single value - no percentage needed when showing all values
+              mergedParts.push(`${part.eventName}: ${uniqueValues[0]}`);
             } else {
               // Multiple non-numeric values - show as list (all values)
               const displayValues = uniqueValues.join('/');
