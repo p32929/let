@@ -9,7 +9,10 @@
     "web": "expo start -c --web --port 3000",
     "clean": "rm -rf .expo node_modules yarn.lock",
     "typecheck": "tsc --noEmit",
-    "prepare": "husky"
+    "prepare": "husky",
+    "build:apk": "eas build --platform android --profile preview",
+    "build:apk:local": "expo run:android --variant release",
+    "build:aab": "eas build --platform android --profile production"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
