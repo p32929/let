@@ -193,9 +193,18 @@ export default function DashboardScreen() {
 
     if (range < 1) return [];
 
+    // Check if all values are integers
+    const allIntegers = values.every(v => Number.isInteger(v));
+
     // Create 3 buckets based on the FIRST event
     const bucketSize = range / 3;
-    const buckets = [
+    const buckets = allIntegers ? [
+      // For integer data, round bucket boundaries to integers
+      { name: 'low', min: Math.floor(min), max: Math.ceil(min + bucketSize), dates: [] as string[] },
+      { name: 'mid', min: Math.ceil(min + bucketSize), max: Math.ceil(min + (bucketSize * 2)), dates: [] as string[] },
+      { name: 'high', min: Math.ceil(min + (bucketSize * 2)), max: Math.ceil(max), dates: [] as string[] },
+    ] : [
+      // For decimal data, keep precise boundaries
       { name: 'low', min, max: min + bucketSize, dates: [] as string[] },
       { name: 'mid', min: min + bucketSize, max: min + (bucketSize * 2), dates: [] as string[] },
       { name: 'high', min: min + (bucketSize * 2), max, dates: [] as string[] },
