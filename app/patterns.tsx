@@ -110,6 +110,31 @@ export default function DashboardScreen() {
 
         const allData = await Promise.all(dataPromises);
         setEventData(allData);
+
+        // Calculate actual data range and set appropriate default timeRange
+        const allDates: string[] = [];
+        allData.forEach(({ dataPoints }) => {
+          dataPoints.forEach(d => allDates.push(d.date));
+        });
+
+        if (allDates.length > 0) {
+          const sortedDates = allDates.sort();
+          const oldestDate = parseISO(sortedDates[0]);
+          const newestDate = parseISO(sortedDates[sortedDates.length - 1]);
+          const daysDiff = Math.ceil((newestDate.getTime() - oldestDate.getTime()) / (1000 * 60 * 60 * 24));
+
+          // Set default timeRange based on actual data range
+          if (daysDiff <= 7) {
+            setTimeRange('7d');
+          } else if (daysDiff <= 30) {
+            setTimeRange('30d');
+          } else if (daysDiff <= 90) {
+            setTimeRange('90d');
+          } else {
+            setTimeRange('365d');
+          }
+        }
+
         setIsLoading(false);
 
         // Discover patterns from ALL data with loading state
