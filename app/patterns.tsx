@@ -189,7 +189,8 @@ export default function DashboardScreen() {
       .filter(d => typeof d.value === 'number' && d.value > 0)
       .map(d => ({ date: d.date, value: d.value as number }));
 
-    if (numericValues.length < 10) return [];
+    // Require at least 3 days of data for pattern discovery
+    if (numericValues.length < 3) return [];
 
     const values = numericValues.map(d => d.value);
     const min = Math.min(...values);
