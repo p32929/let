@@ -193,9 +193,18 @@ export default function DashboardScreen() {
 
     if (range < 1) return [];
 
+    // Check if all values are integers
+    const allIntegers = values.every(v => Number.isInteger(v));
+
     // Create 3 buckets based on the FIRST event
     const bucketSize = range / 3;
-    const buckets = [
+    const buckets = allIntegers ? [
+      // For integer data, round bucket boundaries to integers
+      { name: 'low', min: Math.floor(min), max: Math.ceil(min + bucketSize), dates: [] as string[] },
+      { name: 'mid', min: Math.ceil(min + bucketSize), max: Math.ceil(min + (bucketSize * 2)), dates: [] as string[] },
+      { name: 'high', min: Math.ceil(min + (bucketSize * 2)), max: Math.ceil(max), dates: [] as string[] },
+    ] : [
+      // For decimal data, keep precise boundaries
       { name: 'low', min, max: min + bucketSize, dates: [] as string[] },
       { name: 'mid', min: min + bucketSize, max: min + (bucketSize * 2), dates: [] as string[] },
       { name: 'high', min: min + (bucketSize * 2), max, dates: [] as string[] },
@@ -337,13 +346,13 @@ export default function DashboardScreen() {
     const groups = new Map<string, PatternGroup>();
 
     for (const bucketPattern of bucketPatterns) {
-      // Create signature based on event sequence and trends
+      // Create signature based on event sequence and trends (not specific string values)
       const signature = bucketPattern.parts
         .map(part => {
           if (part.eventType === 'boolean') {
             return `${part.eventName}:${part.booleanPositive ? 'yes' : 'no'}`;
           } else if (part.eventType === 'string') {
-            return `${part.eventName}:${part.stringValue}`;
+            return `${part.eventName}:string`;
           } else {
             return `${part.eventName}:number`;
           }
@@ -430,19 +439,32 @@ export default function DashboardScreen() {
             }
           }
         } else if (part.eventType === 'string') {
-          // String events - show value with percentage range
-          const allPcts = group.patterns
-            .map(p => p.parts[i]?.stringPct)
-            .filter(pct => pct !== undefined) as number[];
+          // String events - collect all unique values and show as range/list
+          const allStringData = group.patterns
+            .map(p => p.parts[i])
+            .filter(p => p?.stringValue) as Array<{ stringValue: string; stringPct: number }>;
 
-          if (allPcts.length > 0 && part.stringValue) {
-            const minPct = Math.min(...allPcts);
-            const maxPct = Math.max(...allPcts);
+          if (allStringData.length > 0) {
+            const uniqueValues = [...new Set(allStringData.map(d => d.stringValue))];
 
-            if (minPct === maxPct) {
-              mergedParts.push(`${part.eventName}: ${part.stringValue} ${minPct.toFixed(0)}%`);
+            // Check if string values are numeric (like "1", "2", "5")
+            const allNumeric = uniqueValues.every(v => !isNaN(Number(v)));
+
+            if (allNumeric && uniqueValues.length > 1) {
+              // Show as numeric range
+              const nums = uniqueValues.map(v => Number(v)).sort((a, b) => a - b);
+              const minVal = nums[0];
+              const maxVal = nums[nums.length - 1];
+              mergedParts.push(`${part.eventName}: ${minVal}-${maxVal}`);
+            } else if (uniqueValues.length === 1) {
+              // Single value - show with percentage if available
+              const pcts = allStringData.map(d => d.stringPct);
+              const avgPct = pcts.reduce((a, b) => a + b, 0) / pcts.length;
+              mergedParts.push(`${part.eventName}: ${uniqueValues[0]} ${avgPct.toFixed(0)}%`);
             } else {
-              mergedParts.push(`${part.eventName}: ${part.stringValue} ${minPct.toFixed(0)}-${maxPct.toFixed(0)}%`);
+              // Multiple non-numeric values - show as list (limit to 3)
+              const displayValues = uniqueValues.slice(0, 3).join('/');
+              mergedParts.push(`${part.eventName}: ${displayValues}`);
             }
           }
         }
