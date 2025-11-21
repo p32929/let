@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getEventValuesForDateRangeComplete } from '@/db/operations/events';
 import { format, subDays, parseISO } from 'date-fns';
 import type { Event } from '@/types/events';
+import { isDefaultValue } from '@/lib/data-optimization';
 import { Copy } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import {
@@ -111,14 +112,20 @@ export default function DashboardScreen() {
         const allData = await Promise.all(dataPromises);
         setEventData(allData);
 
-        // Calculate actual data range and set appropriate default timeRange
-        const allDates: string[] = [];
-        allData.forEach(({ dataPoints }) => {
-          dataPoints.forEach(d => allDates.push(d.date));
+        // Calculate actual data range (excluding dates with only default values)
+        const datesWithData = new Set<string>();
+
+        // Collect all dates where at least one event has a non-default value
+        allData.forEach(({ event, dataPoints }) => {
+          dataPoints.forEach(d => {
+            if (!isDefaultValue(String(d.value), event.type)) {
+              datesWithData.add(d.date);
+            }
+          });
         });
 
-        if (allDates.length > 0) {
-          const sortedDates = allDates.sort();
+        if (datesWithData.size > 0) {
+          const sortedDates = Array.from(datesWithData).sort();
           const oldestDate = parseISO(sortedDates[0]);
           const newestDate = parseISO(sortedDates[sortedDates.length - 1]);
           const daysDiff = Math.ceil((newestDate.getTime() - oldestDate.getTime()) / (1000 * 60 * 60 * 24));
