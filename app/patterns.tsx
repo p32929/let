@@ -218,14 +218,14 @@ export default function DashboardScreen() {
       .filter(d => typeof d.value === 'number' && d.value > 0)
       .map(d => ({ date: d.date, value: d.value as number }));
 
-    if (numericValues.length < 10) return [];
+    if (numericValues.length < 3) return []; // Reduced from 10 to 3 for more patterns
 
     const values = numericValues.map(d => d.value);
     const min = Math.min(...values);
     const max = Math.max(...values);
     const range = max - min;
 
-    if (range < 1) return [];
+    if (range < 0.1) return []; // Reduced from 1 to 0.1 to catch smaller variations
 
     // Check if all values are integers
     const allIntegers = values.every(v => Number.isInteger(v));
@@ -273,7 +273,7 @@ export default function DashboardScreen() {
 
     // For each bucket, build detailed pattern data
     for (const bucket of buckets) {
-      if (bucket.dates.length < 2) continue;
+      if (bucket.dates.length < 1) continue; // Allow single-date patterns
 
       const parts: BucketPattern['parts'] = [];
       const relatedEvents: Event[] = [];
@@ -309,13 +309,13 @@ export default function DashboardScreen() {
             const maxVal = Math.max(...numValues);
             const unit = event.unit || '';
 
-            // Store range data for the primary event
+            // Store range data for the primary event (use actual values, not bucket boundaries)
             if (event.id === primaryEvent.event.id) {
               parts.push({
                 eventName: event.name,
                 eventId: event.id,
                 eventType: 'number',
-                primaryRange: { min: bucket.min, max: bucket.max, unit },
+                primaryRange: { min: minVal, max: maxVal, unit },
               });
             } else {
               parts.push({
@@ -496,8 +496,8 @@ export default function DashboardScreen() {
               const avgPct = pcts.reduce((a, b) => a + b, 0) / pcts.length;
               mergedParts.push(`${part.eventName}: ${uniqueValues[0]} ${avgPct.toFixed(0)}%`);
             } else {
-              // Multiple non-numeric values - show as list (limit to 3)
-              const displayValues = uniqueValues.slice(0, 3).join('/');
+              // Multiple non-numeric values - show as list (all values)
+              const displayValues = uniqueValues.join('/');
               mergedParts.push(`${part.eventName}: ${displayValues}`);
             }
           }
