@@ -122,7 +122,7 @@ function findCoOccurrencePatterns(sortedData: { event: Event; dataPoints: EventD
       }
 
       if (eventSummaries.length >= 2) {
-        const description = eventSummaries.join(' → ');
+        const description = `When ${conditionEvent.event.name} ✓: ${eventSummaries.join(' → ')}`;
         const confidence = Math.min(95, 65 + (trueDates.length * 2));
 
         patterns.push({
@@ -158,7 +158,7 @@ function findCoOccurrencePatterns(sortedData: { event: Event; dataPoints: EventD
       }
 
       if (eventSummaries.length >= 2) {
-        const description = eventSummaries.join(' → ');
+        const description = `When ${conditionEvent.event.name} ✗: ${eventSummaries.join(' → ')}`;
         const confidence = Math.min(95, 65 + (falseDates.length * 2));
 
         patterns.push({
