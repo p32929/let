@@ -378,9 +378,15 @@ export default function DashboardScreen() {
             relatedEvents.push(event);
           }
         } else if (event.type === 'string') {
+          // Split comma-separated values and flatten
           const strValues = matchingData
             .filter(d => d && d.value && String(d.value).trim())
-            .map(d => String(d!.value).trim().toLowerCase());
+            .flatMap(d =>
+              String(d!.value)
+                .split(',')
+                .map(v => v.trim().toLowerCase())
+                .filter(v => v)
+            );
 
           if (strValues.length > 0) {
             // Get all unique values
@@ -398,7 +404,7 @@ export default function DashboardScreen() {
               eventName: event.name,
               eventId: event.id,
               eventType: 'string',
-              stringValues: uniqueValues, // Store ALL unique values
+              stringValues: uniqueValues, // Store ALL unique values (now split by comma)
               stringValue: topValue.value, // Keep for compatibility
               stringPct: topValue.pct,
             });
@@ -632,8 +638,14 @@ export default function DashboardScreen() {
     // Create mapping for string values to numbers
     const stringValueMappings: Record<string, { values: string[]; colorMap: Record<string, string> }> = {};
     stringEvents.forEach(({ event, dataPoints }) => {
+      // Split comma-separated values and flatten into individual values
       const uniqueValues = Array.from(new Set(
-        dataPoints.map(d => String(d.value).trim().toLowerCase()).filter(v => v)
+        dataPoints.flatMap(d =>
+          String(d.value)
+            .split(',')
+            .map(v => v.trim().toLowerCase())
+            .filter(v => v)
+        )
       )).sort();
 
       // Assign each unique value a position from 0 to 100
@@ -681,17 +693,30 @@ export default function DashboardScreen() {
       stringEvents.forEach(({ event, dataPoints }) => {
         const point = dataPoints.find((p) => p.date === date);
         if (point && typeof point.value === 'string') {
-          const stringValue = String(point.value).trim().toLowerCase();
+          // Split comma-separated values
+          const stringValues = String(point.value)
+            .split(',')
+            .map(v => v.trim().toLowerCase())
+            .filter(v => v);
+
           const mapping = stringValueMappings[event.name];
-          if (mapping && stringValue) {
-            // Map to position in the list (evenly spaced 0-100)
-            const index = mapping.values.indexOf(stringValue);
-            if (index !== -1) {
+          if (mapping && stringValues.length > 0) {
+            // Store all values as an array
+            dataPoint[`${event.name}_all_values`] = stringValues;
+            // Use the first value for positioning (or average of all positions)
+            const positions = stringValues
+              .map(val => mapping.values.indexOf(val))
+              .filter(idx => idx !== -1);
+
+            if (positions.length > 0) {
+              // Average position for chart placement
+              const avgIndex = positions.reduce((a, b) => a + b, 0) / positions.length;
               const position = mapping.values.length > 1
-                ? (index / (mapping.values.length - 1)) * 100
+                ? (avgIndex / (mapping.values.length - 1)) * 100
                 : 50;
               dataPoint[event.name] = position;
-              dataPoint[`${event.name}_original`] = stringValue;
+              // Store original values as comma-separated for display
+              dataPoint[`${event.name}_original`] = stringValues.join(', ');
             }
           }
         }

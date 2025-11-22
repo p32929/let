@@ -3,10 +3,10 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "dev": "expo start -c",
+    "dev": "NODE_OPTIONS=--max-old-space-size=4096 expo start -c",
     "android": "expo start -c --android",
     "ios": "expo start -c --ios",
-    "web": "expo start -c --web --port 3000",
+    "web": "NODE_OPTIONS=--max-old-space-size=4096 expo start -c --web --port 3000",
     "clean": "rm -rf .expo node_modules yarn.lock",
     "typecheck": "tsc --noEmit",
     "prepare": "husky",
