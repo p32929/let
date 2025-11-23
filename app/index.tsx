@@ -454,15 +454,21 @@ export default function HomeScreen() {
 
         {/* Popup Menu */}
         {showMenu && (
-          <View
-            className="absolute bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg shadow-2xl overflow-hidden z-[100]"
-            style={{
-              top: 12,
-              right: 16,
-              minWidth: 200,
-              elevation: 8
-            }}
-          >
+          <>
+            {/* Backdrop - close menu when clicking outside */}
+            <Pressable
+              className="absolute inset-0 z-[99]"
+              onPress={() => setShowMenu(false)}
+            />
+            <View
+              className="absolute bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg shadow-2xl overflow-hidden z-[100]"
+              style={{
+                top: 12,
+                right: 16,
+                minWidth: 200,
+                elevation: 8
+              }}
+            >
             <Pressable
               className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
               onPress={() => {
@@ -559,11 +565,16 @@ export default function HomeScreen() {
               <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">{colorScheme === 'dark' ? 'Light Mode' : 'Dark Mode'}</Text>
             </Pressable>
           </View>
+          </>
         )}
 
       {/* No Events Dialog */}
       {showNoEventsDialog && (
         <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-[100]">
+          <Pressable
+            className="absolute inset-0"
+            onPress={() => setShowNoEventsDialog(false)}
+          />
           <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
             <Text className="text-xl font-bold mb-2 text-[#0a0a0a] dark:text-[#fafafa]">No Events Found</Text>
             <Text className="text-[#737373] dark:text-[#a3a3a3] mb-4">
@@ -594,6 +605,10 @@ export default function HomeScreen() {
       {/* Sample Data Confirmation Dialog */}
       {showSampleDataDialog && (
         <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-[100]">
+          <Pressable
+            className="absolute inset-0"
+            onPress={() => setShowSampleDataDialog(false)}
+          />
           <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
             <Text className="text-xl font-bold mb-2 text-[#0a0a0a] dark:text-[#fafafa]">Load Sample Data?</Text>
             <Text className="text-[#737373] dark:text-[#a3a3a3] mb-4">
@@ -621,6 +636,10 @@ export default function HomeScreen() {
       {/* Reset Confirmation Dialog */}
       {showResetDialog && (
         <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-[100]">
+          <Pressable
+            className="absolute inset-0"
+            onPress={() => setShowResetDialog(false)}
+          />
           <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
             <Text className="text-xl font-bold mb-2 text-[#0a0a0a] dark:text-[#fafafa]">Reset All Data?</Text>
             <Text className="text-[#737373] dark:text-[#a3a3a3] mb-4">
@@ -698,6 +717,15 @@ export default function HomeScreen() {
       {/* Import Dialog */}
       {showImportDialog && (
         <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-[100]">
+          <Pressable
+            className="absolute inset-0"
+            onPress={() => {
+              if (!importingData) {
+                setShowImportDialog(false);
+                setClearExisting(false);
+              }
+            }}
+          />
           <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
             <Text className="text-xl font-bold mb-2 text-[#0a0a0a] dark:text-[#fafafa]">Import Data</Text>
             <Text className="text-[#737373] dark:text-[#a3a3a3] mb-4">

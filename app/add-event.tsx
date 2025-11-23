@@ -54,15 +54,10 @@ export default function AddEventScreen() {
   const [unit, setUnit] = React.useState('');
   const [color, setColor] = React.useState(PRESET_COLORS[0]);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const { events, refreshEvents } = useEventsStore();
+  const refreshEvents = useEventsStore((state) => state.refreshEvents);
   const insets = useSafeAreaInsets();
 
-  // Redirect to index if no events
-  React.useEffect(() => {
-    if (events.length === 0) {
-      router.replace('/');
-    }
-  }, [events.length]);
+  // No redirect - this is where users CREATE their first event
 
   const handleSubmit = async () => {
     if (!name.trim()) {
