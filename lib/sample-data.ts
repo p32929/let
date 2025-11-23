@@ -13,88 +13,86 @@ export async function addSampleData(onProgress?: (progress: number, message: str
       type: 'number' as const,
       unit: 'hours',
       color: '#3b82f6', // blue
-      order: 0,
     },
     {
       name: 'Good day',
       type: 'boolean' as const,
       color: '#22c55e', // green
-      order: 1,
     },
     {
       name: 'Went outside',
       type: 'boolean' as const,
       color: '#84cc16', // lime
-      order: 2,
     },
     {
       name: 'Ran',
       type: 'number' as const,
       unit: 'minutes',
       color: '#f97316', // orange
-      order: 3,
     },
     {
       name: 'Drank coffee',
       type: 'boolean' as const,
       color: '#78350f', // brown
-      order: 4,
     },
     {
       name: 'Drank tea',
       type: 'boolean' as const,
       color: '#14b8a6', // teal
-      order: 5,
     },
     {
       name: 'Romance',
       type: 'number' as const,
       unit: 'hours',
       color: '#ec4899', // pink
-      order: 6,
     },
     {
       name: 'Watched movie',
       type: 'boolean' as const,
       color: '#8b5cf6', // purple
-      order: 7,
     },
     {
       name: 'Watched Korean drama',
       type: 'boolean' as const,
       color: '#a855f7', // violet
-      order: 8,
     },
     {
       name: 'Dress color',
       type: 'string' as const,
       color: '#ef4444', // red
-      order: 9,
     },
     {
       name: 'Woke up at',
       type: 'string' as const,
       color: '#f59e0b', // amber
-      order: 10,
     },
     {
       name: 'Workout',
       type: 'number' as const,
       unit: 'minutes',
       color: '#10b981', // emerald
-      order: 11,
     },
   ];
 
   // Insert events using database operations
   const insertedEvents = [];
-  for (const eventData of sampleEvents) {
+  for (let i = 0; i < sampleEvents.length; i++) {
+    const eventData = sampleEvents[i];
     const event = await createEvent(eventData);
     insertedEvents.push(event);
+
+    // Update progress for each event created
+    const eventProgress = Math.floor(((i + 1) / sampleEvents.length) * 10);
+    if (onProgress) {
+      onProgress(eventProgress, `Creating events: ${i + 1}/${sampleEvents.length}`);
+    }
   }
 
   console.log(`Created ${insertedEvents.length} events`);
   if (onProgress) onProgress(10, `Created ${insertedEvents.length} events`);
+
+  // Small delay before starting data generation
+  await new Promise(resolve => setTimeout(resolve, 100));
 
   // Generate sample data for the last 2 years (730 days)
   const today = new Date();
@@ -197,6 +195,9 @@ export async function addSampleData(onProgress?: (progress: number, message: str
       if (onProgress) {
         onProgress(progress, `Loading data: ${i + 1}/${totalDays} days`);
       }
+
+      // Small delay to allow UI to update
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       // Clear batch array
       valuesToInsert.length = 0;

@@ -171,19 +171,28 @@ export default function HomeScreen() {
       setLoadingMessage('Starting...');
 
       await addSampleData((progress, message) => {
-        setLoadingProgress(progress);
-        setLoadingMessage(message);
+        // Use requestAnimationFrame to ensure UI updates
+        requestAnimationFrame(() => {
+          setLoadingProgress(progress);
+          setLoadingMessage(message);
+        });
       });
 
-      setLoadingMessage('Loading events...');
+      requestAnimationFrame(() => {
+        setLoadingMessage('Loading events...');
+      });
       await loadEvents();
     } catch (error) {
       console.error('Failed to load sample data:', error);
-      setLoadingMessage('Error loading sample data');
+      requestAnimationFrame(() => {
+        setLoadingMessage('Error loading sample data');
+      });
     } finally {
-      setLoadingSampleData(false);
-      setLoadingProgress(0);
-      setLoadingMessage('');
+      requestAnimationFrame(() => {
+        setLoadingSampleData(false);
+        setLoadingProgress(0);
+        setLoadingMessage('');
+      });
     }
   };
 
