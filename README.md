@@ -6,14 +6,23 @@ A simple yet powerful mobile app to track daily habits, life events, and discove
 
 ## Screenshots
 
-<!-- TODO: Add actual screenshots -->
-| Home | Patterns | Add Event |
-|------|----------|-----------|
-| ![Home](screenshots/home.png) | ![Patterns](screenshots/patterns.png) | ![Add Event](screenshots/add-event.png) |
+| Onboarding | Home | Dashboard | Patterns |
+|:----------:|:----:|:---------:|:--------:|
+| [![Onboarding](https://res.cloudinary.com/p32929/image/upload/c_scale,h_200/v1764069334/LET/886cfe1c-1193-4a66-be71-661001a8c376.png)](https://res.cloudinary.com/p32929/image/upload/v1764069334/LET/886cfe1c-1193-4a66-be71-661001a8c376.png) | [![Home](https://res.cloudinary.com/p32929/image/upload/c_scale,h_200/v1764069682/LET/99a23514-d776-4a29-afd9-a700ab6b252e.png)](https://res.cloudinary.com/p32929/image/upload/v1764069682/LET/99a23514-d776-4a29-afd9-a700ab6b252e.png) | [![Dashboard](https://res.cloudinary.com/p32929/image/upload/c_scale,h_200/v1764069728/LET/d77e1726-84ad-47f7-ab7b-f013dd2967e5.png)](https://res.cloudinary.com/p32929/image/upload/v1764069728/LET/d77e1726-84ad-47f7-ab7b-f013dd2967e5.png) | [![Patterns](https://res.cloudinary.com/p32929/image/upload/c_scale,h_200/v1764069699/LET/4a9290a4-f80d-400b-bfce-3c9d621f1071.png)](https://res.cloudinary.com/p32929/image/upload/v1764069699/LET/4a9290a4-f80d-400b-bfce-3c9d621f1071.png) |
 
-| Onboarding | Dark Mode | Calendar |
-|------------|-----------|----------|
-| ![Onboarding](screenshots/onboarding.png) | ![Dark Mode](screenshots/dark-mode.png) | ![Calendar](screenshots/calendar.png) |
+## Why I Built This
+
+I built this project because I was working on something bigger and needed to evaluate a framework that could handle iOS, Android, and Web simultaneously - with proper UI consistency and fast load times across all platforms.
+
+So I started with something simple enough to test the framework's capabilities without getting lost in complex business logic.
+
+**The honest truth?** React Native isn't perfect yet. NativeWind and the shadcn-like component library (React Native Reusables) have their fair share of issues. I spent a lot of time debugging, running the app on all platforms, and fixing platform-specific quirks.
+
+I did consider switching to Flutter or Tauri Mobile, but:
+- Flutter Web takes forever to load (not ideal for web-first experiences)
+- Tauri Mobile is still too new and experimental
+
+So I stuck with React Native + Expo, debugged issues platform by platform, and eventually ended up with a usable app that works everywhere. Sometimes the best choice is the one you can actually ship.
 
 ## What is LET?
 
@@ -92,33 +101,6 @@ yarn dev
 yarn ios     # iOS
 yarn android # Android
 yarn web     # Web
-```
-
-## Project Structure
-
-```
-app/                  # Expo Router pages
-├── index.tsx         # Home screen
-├── patterns.tsx      # Pattern analysis
-├── add-event.tsx     # Add new event
-├── edit-event.tsx    # Edit event
-├── onboarding.tsx    # First-launch onboarding
-└── _layout.tsx       # Root layout
-
-components/           # Reusable components
-├── ui/               # Base UI components
-└── event-tracker.tsx # Event tracking component
-
-db/                   # Database layer
-├── schema.ts         # Drizzle schema
-├── migrate.ts        # Migrations
-└── operations/       # CRUD operations
-
-lib/                  # Utilities
-├── stores/           # Zustand stores
-├── date-utils.ts     # Date helpers
-├── import-export.ts  # Data export/import
-└── sample-data.ts    # Sample data generator
 ```
 
 ## Contributing
