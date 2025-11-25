@@ -31,7 +31,7 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: Build web export
-        run: EXPO_BASE_URL=/let npx expo export --platform web
+        run: npx expo export --platform web
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
