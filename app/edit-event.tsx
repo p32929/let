@@ -5,7 +5,7 @@ import { Text } from '@/components/ui/text';
 import { Icon } from '@/components/ui/icon';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import * as React from 'react';
-import { View, ScrollView, Pressable } from 'react-native';
+import { View, ScrollView, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
 import { updateEvent, deleteEvent } from '@/db/operations/events';
 import { useEventsStore } from '@/lib/stores/events-store';
 import type { EventType } from '@/types/events';
@@ -144,10 +144,16 @@ export default function EditEventScreen() {
   return (
     <>
       <Stack.Screen options={SCREEN_OPTIONS} />
-      <ScrollView
-        className="flex-1 bg-background"
-        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
+        <ScrollView
+          className="flex-1 bg-background"
+          contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+          keyboardShouldPersistTaps="handled"
+        >
         <View className="p-6 gap-6">
           {/* Header */}
           <View className="gap-1">
@@ -310,6 +316,7 @@ export default function EditEventScreen() {
           </View>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </>
   );
 }
