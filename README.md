@@ -6,23 +6,10 @@ A simple yet powerful mobile app to track daily habits, life events, and discove
 
 ## Screenshots
 
+
 | Onboarding | Home | Dashboard | Patterns |
 |:----------:|:----:|:---------:|:--------:|
 | [![Onboarding](https://res.cloudinary.com/p32929/image/upload/c_scale,h_200/v1764069334/LET/886cfe1c-1193-4a66-be71-661001a8c376.png)](https://res.cloudinary.com/p32929/image/upload/v1764069334/LET/886cfe1c-1193-4a66-be71-661001a8c376.png) | [![Home](https://res.cloudinary.com/p32929/image/upload/c_scale,h_200/v1764069682/LET/99a23514-d776-4a29-afd9-a700ab6b252e.png)](https://res.cloudinary.com/p32929/image/upload/v1764069682/LET/99a23514-d776-4a29-afd9-a700ab6b252e.png) | [![Dashboard](https://res.cloudinary.com/p32929/image/upload/c_scale,h_200/v1764069728/LET/d77e1726-84ad-47f7-ab7b-f013dd2967e5.png)](https://res.cloudinary.com/p32929/image/upload/v1764069728/LET/d77e1726-84ad-47f7-ab7b-f013dd2967e5.png) | [![Patterns](https://res.cloudinary.com/p32929/image/upload/c_scale,h_200/v1764069699/LET/4a9290a4-f80d-400b-bfce-3c9d621f1071.png)](https://res.cloudinary.com/p32929/image/upload/v1764069699/LET/4a9290a4-f80d-400b-bfce-3c9d621f1071.png) |
-
-## Why I Built This
-
-I built this project because I was working on something bigger and needed to evaluate a framework that could handle iOS, Android, and Web simultaneously - with proper UI consistency and fast load times across all platforms.
-
-So I started with something simple enough to test the framework's capabilities without getting lost in complex business logic.
-
-**The honest truth?** React Native isn't perfect yet. NativeWind and the shadcn-like component library (React Native Reusables) have their fair share of issues. I spent a lot of time debugging, running the app on all platforms, and fixing platform-specific quirks.
-
-I did consider switching to Flutter or Tauri Mobile, but:
-- Flutter Web takes forever to load (not ideal for web-first experiences)
-- Tauri Mobile is still too new and experimental
-
-So I stuck with React Native + Expo, debugged issues platform by platform, and eventually ended up with a usable app that works everywhere. Sometimes the best choice is the one you can actually ship.
 
 ## What is LET?
 
@@ -160,6 +147,20 @@ What does that mean? It means:
 
 This is what the future looks like, folks. I described what I wanted, and an AI built it. We're living in the future, and it's both amazing and slightly terrifying.
 
+## Why I Built This
+
+I built this project because I was working on something bigger and needed to evaluate a framework that could handle iOS, Android, and Web simultaneously - with proper UI consistency and fast load times across all platforms.
+
+So I started with something simple enough to test the framework's capabilities without getting lost in complex business logic.
+
+**The honest truth?** React Native isn't perfect yet. NativeWind and the shadcn-like component library (React Native Reusables) have their fair share of issues. I spent a lot of time debugging, running the app on all platforms, and fixing platform-specific quirks.
+
+I did consider switching to Flutter or Tauri Mobile, but:
+- Flutter Web takes forever to load (not ideal for web-first experiences)
+- Tauri Mobile is still too new and experimental
+
+So I stuck with React Native + Expo, debugged issues platform by platform, and eventually ended up with a usable app that works everywhere. Sometimes the best choice is the one you can actually ship.
+
 ### Special Thanks
 
 - **Claude (Anthropic)** - For writing all this code while I watched
@@ -175,5 +176,5 @@ MIT License - Do whatever you want with it. Just don't blame me if it breaks.
 <p align="center">
   Made with AI by a human who can code but is too lazy to code multiple projects at the same time because multitasking is life
   <br>
-  <sub>No developers were harmed in the making of this app (because there weren't any)</sub>
+  <sub>No developers were harmed in the making of this app</sub>
 </p>

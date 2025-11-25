@@ -13,7 +13,10 @@
     "build:apk": "npx expo prebuild && cd android && ./gradlew assembleRelease && cd .. && echo '\n✅ APK built at: android/app/build/outputs/apk/release/app-release.apk'",
     "build:apk:install": "npx expo prebuild && cd android && ./gradlew installRelease && cd ..",
     "build:apk:cloud": "eas build --platform android --profile preview",
-    "build:aab": "eas build --platform android --profile production"
+    "build:aab": "eas build --platform android --profile production",
+    "build:web": "npx expo export --platform web",
+    "predeploy": "yarn build:web",
+    "deploy": "gh-pages -d dist"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
