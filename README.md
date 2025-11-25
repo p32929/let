@@ -1,245 +1,197 @@
-# Life Events Tracker
+# LET - Life Events Tracker
 
-A React Native app built with Expo for tracking daily life events and habits with beautiful UI components from React Native Reusables.
+> Track your life. Discover patterns. Become your best self.
 
-## ✅ Completed Features (MVP Core)
+A simple yet powerful mobile app to track daily habits, life events, and discover patterns in your daily life.
 
-### Phase 1: Project Setup & Architecture
-- ✅ Installed and configured React Native Reusables (32 UI components)
-- ✅ Set up database (SQLite with Drizzle ORM)
-- ✅ Created data models and schemas (Event, EventValue)
-- ✅ Set up navigation structure (Expo Router)
-- ✅ Configured TypeScript types for events and tracking data
-- ✅ Set up state management (Zustand)
+## Screenshots
 
-### Phase 2: Core Data Layer
-- ✅ Created Event model (name, type, unit, color, order)
-- ✅ Created EventValue model (eventId, date, value, timestamp)
-- ✅ Implemented CRUD operations for Events
-- ✅ Implemented daily value tracking operations
-- ✅ Added data validation and auto-save
-- ✅ Created database migration system with indexes
+<!-- TODO: Add actual screenshots -->
+| Home | Patterns | Add Event |
+|------|----------|-----------|
+| ![Home](screenshots/home.png) | ![Patterns](screenshots/patterns.png) | ![Add Event](screenshots/add-event.png) |
 
-### Phase 3: Weekly View Interface
-- ✅ Designed and implemented week header component
-- ✅ Highlighted current day in week view
-- ✅ Created day selector/navigator with previous/next week
-- ✅ Displayed events list for selected day
+| Onboarding | Dark Mode | Calendar |
+|------------|-----------|----------|
+| ![Onboarding](screenshots/onboarding.png) | ![Dark Mode](screenshots/dark-mode.png) | ![Calendar](screenshots/calendar.png) |
 
-### Phase 4: Event Management
-- ✅ Created "Add Event" modal/screen
-  - ✅ Event name input
-  - ✅ Type selector (Boolean/Number/String)
-  - ✅ Unit label input (optional, for numbers)
-  - ✅ Color picker with 8 preset colors
+## What is LET?
 
-### Phase 5: Tracking Widgets
-- ✅ Boolean toggle widget (Yes/No with Switch)
-- ✅ Number input widget with increment/decrement buttons
-- ✅ String/text input widget with multiline support
-- ✅ Quick entry interface for daily logging
-- ✅ Auto-save functionality for all widget types
+**LET** stands for **Life Events Tracker** - an app designed to help you:
 
-## 🏗️ Tech Stack
+- Track daily habits (exercise, meditation, reading, water intake)
+- Monitor health & fitness (sleep hours, workouts, meals)
+- Follow goals & milestones
+- Log mood & wellbeing
+- Record important life events
 
-- **Framework**: Expo (React Native)
-- **UI Components**: React Native Reusables (shadcn-style components)
-- **Database**: SQLite with Drizzle ORM
-- **State Management**: Zustand
-- **Navigation**: Expo Router (file-based routing)
-- **Styling**: NativeWind (Tailwind CSS for React Native)
-- **Date Utilities**: date-fns
-- **TypeScript**: Full type safety
+## What This Project IS
 
-## 📦 Installed UI Components (32 total)
+- A React Native project built with Expo
+- A cross-platform app (iOS, Android, Web)
+- A habit tracker and life event logger
+- An open-source project you can contribute to
+- A showcase of what vibe-coding can achieve
+- Built entirely by talking to an AI (yes, really)
 
-Accordion, Alert, Alert Dialog, Aspect Ratio, Avatar, Badge, Button, Card, Checkbox, Collapsible, Context Menu, Dialog, Dropdown Menu, Hover Card, Icon, Input, Label, Menubar, Popover, Progress, Radio Group, Select, Separator, Skeleton, Switch, Tabs, Text, Textarea, Toggle, Toggle Group, Tooltip, Native Only Animated View
+## What This Project IS NOT
 
-## 🚀 Getting Started
+- A unicorn (sorry, no magical horns here)
+- A replacement for your therapist
+- A time machine (can't track events that haven't happened yet... or can we?)
+- A social network (your data stays on your device)
+- Something that will make you coffee (working on it)
+- Written by a human (see acknowledgments below)
+
+## Tech Stack
+
+| Category | Technology |
+|----------|------------|
+| Framework | React Native + Expo |
+| Language | TypeScript |
+| Styling | NativeWind (TailwindCSS) |
+| Database | SQLite (expo-sqlite + Drizzle ORM) |
+| State Management | Zustand |
+| UI Components | Custom components + rn-primitives |
+| Navigation | Expo Router |
+| Charts | Custom SVG-based charts |
+
+## Features
+
+- Dark/Light mode support
+- Week-based navigation with calendar picker
+- Pattern analysis with visual charts
+- Export/Import data (JSON)
+- Customizable event colors
+- Works offline (local SQLite database)
+- Swipe gestures for navigation
+
+## Getting Started
 
 ### Prerequisites
-- Node.js 18+ and npm
+
+- Node.js 18+
+- Yarn or npm
 - Expo CLI
-- iOS Simulator (for macOS) or Android Emulator
+- iOS Simulator / Android Emulator / Physical device
 
 ### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/p32929/let.git
+cd let
+
 # Install dependencies
 yarn install
 
-# Run on iOS
-yarn ios
+# Start the development server
+yarn dev
 
-# Run on Android
-yarn android
-
-# Run on Web
-yarn web
+# Or for specific platforms
+yarn ios     # iOS
+yarn android # Android
+yarn web     # Web
 ```
 
-## 📂 Project Structure
+## Project Structure
 
 ```
-├── app/                    # Expo Router pages
-│   ├── index.tsx          # Main screen (weekly view)
-│   ├── add-event.tsx      # Add event modal
-│   └── _layout.tsx        # Root layout
-├── components/
-│   ├── ui/                # React Native Reusables components (32 files)
-│   └── event-tracker.tsx  # Event tracking widget
-├── db/
-│   ├── schemas/           # Drizzle ORM schemas
-│   │   └── events.ts      # Event and EventValue models
-│   ├── operations/        # Database operations
-│   │   └── events.ts      # CRUD operations
-│   ├── client.ts          # Database client
-│   └── migrate.ts         # Migration logic
-├── lib/
-│   ├── stores/            # Zustand stores
-│   │   └── events-store.ts
-│   ├── date-utils.ts      # Date utility functions
-│   ├── utils.ts           # General utilities
-│   └── theme.ts           # Theme configuration
-└── types/                 # TypeScript type definitions
-    └── events.ts          # Event and EventValue types
+app/                  # Expo Router pages
+├── index.tsx         # Home screen
+├── patterns.tsx      # Pattern analysis
+├── add-event.tsx     # Add new event
+├── edit-event.tsx    # Edit event
+├── onboarding.tsx    # First-launch onboarding
+└── _layout.tsx       # Root layout
+
+components/           # Reusable components
+├── ui/               # Base UI components
+└── event-tracker.tsx # Event tracking component
+
+db/                   # Database layer
+├── schema.ts         # Drizzle schema
+├── migrate.ts        # Migrations
+└── operations/       # CRUD operations
+
+lib/                  # Utilities
+├── stores/           # Zustand stores
+├── date-utils.ts     # Date helpers
+├── import-export.ts  # Data export/import
+└── sample-data.ts    # Sample data generator
 ```
 
-## 🎨 Features
+## Contributing
 
-### Weekly View
-- Navigate between weeks with previous/next buttons
-- Select any day of the week to view/track events
-- Current day is highlighted
-- Week range displayed at the top
-- Smooth navigation between days
+Contributions are welcome! But before you dive in:
 
-### Event Tracking
-- **Boolean Events**: Simple yes/no toggle (e.g., "Did you exercise?")
-- **Number Events**: Numeric input with +/- buttons (e.g., "Glasses of water")
-- **String Events**: Text input for notes (e.g., "Mood", "Journal entry")
-- Auto-save on every change
-- Color-coded event cards with custom colors
-- Loading states for better UX
+1. **Create an issue first** - Let's discuss what you want to change
+2. **Wait for approval** - I might have opinions (or the AI might)
+3. **Fork the repo** - Make your changes
+4. **Submit a PR** - Reference the issue
 
-### Event Management
-- Create new events with custom name, type, and color
-- Optional unit labels for number events (e.g., "cups", "minutes", "km")
-- Beautiful color picker with 8 preset colors
-- Events maintain order
-- Modal presentation for clean UX
+Please don't just randomly submit PRs without discussion. We're all friends here, let's talk first!
 
-## 🎯 Next Priority Features
+### Code Style
 
-Based on todo.md, the next features to implement are:
+- TypeScript all the way
+- Functional components with hooks
+- NativeWind for styling
+- Keep it simple, keep it clean
 
-1. **Swipe gestures for week navigation** (Phase 3)
-2. **Week-to-week transition animations** (Phase 3)
-3. **Edit Event screen/modal** (Phase 4)
-4. **Delete Event functionality with confirmation** (Phase 4)
-5. **Event reordering/sorting capability** (Phase 4)
-6. **Batch entry support** (Phase 5)
-7. **Time-stamping for entries** (Phase 5)
-8. **Dashboard with charts** (Phase 8)
+## FAQ
 
-## 📝 Database Schema
+**Q: Can I use this for commercial purposes?**
+A: Check the license. But why would you? It's a habit tracker, not a gold mine.
 
-### Events Table
-```typescript
-{
-  id: number (primary key, auto-increment)
-  name: string
-  type: 'boolean' | 'number' | 'string'
-  unit: string | null
-  color: string (default: '#3b82f6')
-  icon: string | null
-  order: number (default: 0)
-  created_at: timestamp
-  updated_at: timestamp
-}
-```
+**Q: Why is it called LET?**
+A: Life Events Tracker. Also, "let" as in "let yourself be better." Deep, right?
 
-### Event Values Table
-```typescript
-{
-  id: number (primary key, auto-increment)
-  event_id: number (foreign key → events.id, cascade delete)
-  date: string (YYYY-MM-DD format)
-  value: string (parsed based on event type)
-  timestamp: timestamp
-  created_at: timestamp
-  updated_at: timestamp
-}
-```
+**Q: Does it sync to the cloud?**
+A: Nope. Your data, your device, your privacy. Old school.
 
-### Indexes
-- `idx_event_values_event_id`: Fast lookup by event
-- `idx_event_values_date`: Fast lookup by date
-- `idx_event_values_unique`: Unique constraint on (event_id, date)
+**Q: I found a bug!**
+A: Create an issue. Or fix it and submit a PR. Or blame the AI.
 
-## 🔧 Available Scripts
+## Troubleshooting
 
-```bash
-yarn dev        # Start development server with cache clear
-yarn android    # Run on Android emulator
-yarn ios        # Run on iOS simulator (Mac only)
-yarn web        # Run on web browser
-yarn typecheck  # Run TypeScript type checking
-yarn clean      # Remove .expo, node_modules, and yarn.lock
-```
+Before asking me anything:
 
-## 🎨 Color Palette
+1. **Ask a good LLM first** - They're smarter than both of us combined
+2. **Read the docs** - Expo, React Native, they have great documentation
+3. **Search existing issues** - Someone might have had the same problem
+4. **If all else fails** - Pray to God, then start reading the code. Good luck, you'll need it.
 
-Default preset colors for events:
-- Blue: `#3b82f6`
-- Green: `#10b981`
-- Amber: `#f59e0b`
-- Red: `#ef4444`
-- Purple: `#8b5cf6`
-- Pink: `#ec4899`
-- Cyan: `#06b6d4`
-- Lime: `#84cc16`
+## Acknowledgments
 
-## 📱 Supported Platforms
+### The Vibe-Coding Confession
 
-- ✅ iOS (Simulator and Device)
-- ✅ Android (Emulator and Device)
-- ✅ Web (Desktop browsers)
-- ✅ Expo Go (for quick testing)
+I have to be honest with you. I **vibe-coded** this entire project.
 
-## 🛠️ Development
+What does that mean? It means:
 
-### Adding New Events
-1. Tap the + button in the header
-2. Enter event name
-3. Select type (Boolean/Number/String)
-4. Choose a color
-5. Add unit label (optional, for numbers)
-6. Tap "Create Event"
+- I didn't write a single line of code manually
+- I just talked to Claude (the AI, not some French guy)
+- I mostly drank tea and approved changes
+- The AI did all the heavy lifting
+- If there are bugs, blame the AI (just kidding, blame me for not prompting better)
 
-### Tracking Events
-1. Select a day from the week view
-2. Each event shows with its tracking widget
-3. Toggle switches for boolean events
-4. Use +/- buttons or type numbers for numeric events
-5. Type text for string events
-6. Changes are auto-saved
+This is what the future looks like, folks. I described what I wanted, and an AI built it. We're living in the future, and it's both amazing and slightly terrifying.
 
-## 📄 License
+### Special Thanks
 
-Private project
+- **Claude (Anthropic)** - For writing all this code while I watched
+- **The Expo Team** - For making React Native actually usable
+- **You** - For reading this far (seriously, why are you still here?)
 
-## 🙏 Credits
+## License
 
-- Built with [Expo](https://expo.dev/)
-- UI components from [React Native Reusables](https://reactnativereusables.com/)
-- Styled with [NativeWind](https://www.nativewind.dev/)
-- Database powered by [Drizzle ORM](https://orm.drizzle.team/)
-- State management by [Zustand](https://zustand-demo.pmnd.rs/)
-- Date utilities from [date-fns](https://date-fns.org/)
+MIT License - Do whatever you want with it. Just don't blame me if it breaks.
 
 ---
 
-**Current Status**: MVP Core is COMPLETE and functional! 🎉
-
-Ready to track your life events and build better habits!
+<p align="center">
+  Made with AI by a human who can code but is too lazy to code multiple projects at the same time because multitasking is life
+  <br>
+  <sub>No developers were harmed in the making of this app (because there weren't any)</sub>
+</p>
