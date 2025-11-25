@@ -5,7 +5,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Stack, router } from 'expo-router';
 import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon, LayoutDashboardIcon, AlertCircleIcon } from 'lucide-react-native';
 import * as React from 'react';
-import { View, ScrollView, Pressable, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, ScrollView, Pressable, Platform } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
 import { useColorScheme } from 'nativewind';
@@ -348,11 +349,6 @@ export default function HomeScreen() {
     <>
       <Stack.Screen options={screenOptions} />
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1"
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-      >
       <View className="flex-1 bg-white dark:bg-[#0a0a0a] relative">
         <View className="border-b border-[#e5e5e5] dark:border-[#262626] p-4">
           {/* Week Navigation */}
@@ -426,14 +422,12 @@ export default function HomeScreen() {
           </View>
 
         {/* Events List */}
-        <ScrollView
-            className="flex-1 p-4"
+        <KeyboardAwareScrollView
+            style={{ flex: 1, padding: 16 }}
             contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
             showsVerticalScrollIndicator={false}
             showsHorizontalScrollIndicator={false}
-            scrollEnabled={true}
-            nestedScrollEnabled={true}
-            keyboardShouldPersistTaps="handled"
+            bottomOffset={20}
           >
             {isLoading || isResetting ? (
               <View className="gap-3">
@@ -465,7 +459,7 @@ export default function HomeScreen() {
                 ))}
               </View>
             )}
-          </ScrollView>
+          </KeyboardAwareScrollView>
 
         {/* Popup Menu */}
         {showMenu && (
@@ -920,7 +914,6 @@ export default function HomeScreen() {
         </AlertDialogContent>
       </AlertDialog>
       </View>
-      </KeyboardAvoidingView>
     </>
   );
 }

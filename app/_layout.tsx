@@ -8,6 +8,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'nativewind';
 import { useColorScheme as useSystemColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import * as React from 'react';
 import { storage } from '@/lib/storage';
 import { ErrorBoundary as CustomErrorBoundary } from '@/components/ErrorBoundary';
@@ -28,25 +29,27 @@ export default function RootLayout() {
 
   return (
     <CustomErrorBoundary>
-      <GestureHandlerRootView
-        style={{ flex: 1, backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }}
-      >
-        <ThemeProvider value={NAV_THEME[activeColorScheme]}>
-          <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={isDark ? '#0a0a0a' : '#ffffff'} />
-          <Stack
-            screenOptions={{
-              headerStyle: {
-                backgroundColor: isDark ? '#0a0a0a' : '#ffffff',
-              },
-              headerTintColor: isDark ? '#fafafa' : '#0a0a0a',
-              contentStyle: {
-                backgroundColor: isDark ? '#0a0a0a' : '#ffffff',
-              },
-            }}
-          />
-          <PortalHost />
-        </ThemeProvider>
-      </GestureHandlerRootView>
+      <KeyboardProvider>
+        <GestureHandlerRootView
+          style={{ flex: 1, backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }}
+        >
+          <ThemeProvider value={NAV_THEME[activeColorScheme]}>
+            <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={isDark ? '#0a0a0a' : '#ffffff'} />
+            <Stack
+              screenOptions={{
+                headerStyle: {
+                  backgroundColor: isDark ? '#0a0a0a' : '#ffffff',
+                },
+                headerTintColor: isDark ? '#fafafa' : '#0a0a0a',
+                contentStyle: {
+                  backgroundColor: isDark ? '#0a0a0a' : '#ffffff',
+                },
+              }}
+            />
+            <PortalHost />
+          </ThemeProvider>
+        </GestureHandlerRootView>
+      </KeyboardProvider>
     </CustomErrorBoundary>
   );
 }
