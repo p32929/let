@@ -14,7 +14,8 @@
     "build:apk:install": "npx expo prebuild && cd android && ./gradlew installRelease && cd ..",
     "build:apk:cloud": "eas build --platform android --profile preview",
     "build:aab": "eas build --platform android --profile production",
-    "build:web": "npx expo export --platform web",
+    "build:web": "EXPO_BASE_URL=/let npx expo export --platform web",
+    "build:web:local": "npx expo export --platform web",
     "predeploy": "yarn build:web",
     "deploy": "gh-pages -d dist"
   },
