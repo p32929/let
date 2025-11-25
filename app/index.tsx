@@ -21,6 +21,7 @@ import { exportData, importData, downloadExportFile, readImportFile } from '@/li
 import { getEvents as dbGetEvents, deleteEvent } from '@/db/operations/events';
 import { Calendar } from '@/components/ui/calendar';
 import { logError } from '@/lib/error-tracker';
+import { isOnboardingCompleted } from './onboarding';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -101,9 +102,16 @@ export default function HomeScreen() {
   const opacity = useSharedValue(1);
 
   React.useEffect(() => {
-    // Initialize database and load events
+    // Check onboarding and initialize database
     const init = async () => {
       try {
+        // Check if onboarding is completed
+        const onboardingDone = await isOnboardingCompleted();
+        if (!onboardingDone) {
+          router.replace('/onboarding');
+          return;
+        }
+
         await migrateDatabase();
         await loadEvents();
       } catch (error) {
