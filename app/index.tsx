@@ -3,9 +3,10 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Stack, router } from 'expo-router';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon, LayoutDashboardIcon, AlertCircleIcon } from 'lucide-react-native';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon, LayoutDashboardIcon, AlertCircleIcon, InfoIcon } from 'lucide-react-native';
+import Constants from 'expo-constants';
 import * as React from 'react';
-import { View, ScrollView, Pressable, Platform } from 'react-native';
+import { View, ScrollView, Pressable, Platform, Linking } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, runOnJS } from 'react-native-reanimated';
@@ -48,6 +49,7 @@ export default function HomeScreen() {
   const [showExportErrorDialog, setShowExportErrorDialog] = React.useState(false);
   const [showImportErrorDialog, setShowImportErrorDialog] = React.useState(false);
   const [showImportSuccessDialog, setShowImportSuccessDialog] = React.useState(false);
+  const [showAboutDialog, setShowAboutDialog] = React.useState(false);
   const [importSuccessMessage, setImportSuccessMessage] = React.useState('');
   const [isResetting, setIsResetting] = React.useState(false);
   const [importingData, setImportingData] = React.useState(false);
@@ -573,13 +575,26 @@ export default function HomeScreen() {
               <Text className="text-base text-[#ef4444] dark:text-[#dc2626]">Reset All Data</Text>
             </Pressable>
             <Pressable
-              className="flex-row items-center px-4 py-3 hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
+              className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
               onPress={() => {
                 setColorScheme(colorScheme === 'dark' ? 'light' : 'dark');
               }}
             >
               <Icon as={colorScheme === 'dark' ? SunIcon : MoonIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
               <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">{colorScheme === 'dark' ? 'Light Mode' : 'Dark Mode'}</Text>
+            </Pressable>
+            {/* Version Info / About */}
+            <Pressable
+              className="flex-row items-center px-4 py-3 hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
+              onPress={() => {
+                setShowMenu(false);
+                setShowAboutDialog(true);
+              }}
+            >
+              <Icon as={InfoIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
+              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">
+                v{Constants.expoConfig?.version || '1.0.0'}({Constants.expoConfig?.android?.versionCode || 1})
+              </Text>
             </Pressable>
           </View>
           </>
@@ -921,6 +936,56 @@ export default function HomeScreen() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* About Dialog */}
+      {showAboutDialog && (
+        <View className="absolute inset-0 bg-black/50 items-center justify-center p-4 z-[100]">
+          <Pressable
+            className="absolute inset-0"
+            onPress={() => setShowAboutDialog(false)}
+          />
+          <View className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-6 max-w-md w-full">
+            <Text className="text-2xl font-bold mb-1 text-center text-[#0a0a0a] dark:text-[#fafafa]">LET</Text>
+            <Text className="text-sm text-center text-[#737373] dark:text-[#a3a3a3] mb-4">
+              Life Events Tracker
+            </Text>
+            <Text className="text-center text-[#737373] dark:text-[#a3a3a3] mb-1">
+              v{Constants.expoConfig?.version || '1.0.0'} (Build {Constants.expoConfig?.android?.versionCode || 1})
+            </Text>
+            <View className="border-t border-[#e5e5e5] dark:border-[#262626] my-4" />
+            <Text className="text-center text-[#0a0a0a] dark:text-[#fafafa] font-semibold mb-3">
+              Created by p32929
+            </Text>
+            <View className="gap-2 mb-4">
+              <View className="flex-row items-center justify-center">
+                <Text className="text-[#737373] dark:text-[#a3a3a3]">GitHub: </Text>
+                <Pressable onPress={() => Linking.openURL('https://github.com/p32929')}>
+                  <Text className="text-blue-500 underline">https://github.com/p32929</Text>
+                </Pressable>
+              </View>
+              <View className="flex-row items-center justify-center">
+                <Text className="text-[#737373] dark:text-[#a3a3a3]">Portfolio: </Text>
+                <Pressable onPress={() => Linking.openURL('https://p32929.github.io')}>
+                  <Text className="text-blue-500 underline">https://p32929.github.io</Text>
+                </Pressable>
+              </View>
+              <View className="flex-row items-center justify-center">
+                <Text className="text-[#737373] dark:text-[#a3a3a3]">Repository: </Text>
+                <Pressable onPress={() => Linking.openURL('https://github.com/p32929/let')}>
+                  <Text className="text-blue-500 underline">https://github.com/p32929/let</Text>
+                </Pressable>
+              </View>
+            </View>
+            <Button
+              variant="outline"
+              onPress={() => setShowAboutDialog(false)}
+              className="w-full"
+            >
+              <Text>Close</Text>
+            </Button>
+          </View>
+        </View>
+      )}
       </View>
     </>
   );
