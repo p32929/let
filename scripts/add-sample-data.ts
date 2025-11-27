@@ -1,4 +1,4 @@
-import { webDb } from '../db/client.web';
+import { createEvent, setEventValue } from '../db/operations/events';
 import { format, subDays } from 'date-fns';
 
 async function addSampleData() {
@@ -35,10 +35,10 @@ async function addSampleData() {
     },
   ];
 
-  // Insert events using webDb methods
+  // Insert events
   const insertedEvents = [];
   for (const eventData of sampleEvents) {
-    const event = await webDb.createEvent(eventData);
+    const event = await createEvent(eventData);
     insertedEvents.push(event);
   }
 
@@ -73,11 +73,11 @@ async function addSampleData() {
       Math.min(10, baseMood + exerciseMoodBonus + (Math.random() - 0.5) * 2)
     );
 
-    // Insert values using webDb
-    await webDb.setEventValue(insertedEvents[0].id, date, sleepHours.toFixed(1));
-    await webDb.setEventValue(insertedEvents[1].id, date, exercise.toString());
-    await webDb.setEventValue(insertedEvents[2].id, date, productivity.toFixed(1));
-    await webDb.setEventValue(insertedEvents[3].id, date, mood.toFixed(1));
+    // Insert values
+    await setEventValue(insertedEvents[0].id, date, sleepHours.toFixed(1));
+    await setEventValue(insertedEvents[1].id, date, exercise.toString());
+    await setEventValue(insertedEvents[2].id, date, productivity.toFixed(1));
+    await setEventValue(insertedEvents[3].id, date, mood.toFixed(1));
 
     dataPointCount += 4;
   }

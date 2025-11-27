@@ -12,10 +12,11 @@ export async function createEvent(data: {
 }): Promise<Event> {
   const db = await getDatabase();
 
+  const now = new Date().toISOString();
   const result = await db.runAsync(
-    `INSERT INTO events (name, type, unit, color, icon, "order")
-     VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX("order"), -1) + 1 FROM events))`,
-    [data.name, data.type, data.unit || null, data.color || '#3b82f6', data.icon || null]
+    `INSERT INTO events (name, type, unit, color, icon, "order", created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX("order"), -1) + 1 FROM events), ?, ?)`,
+    [data.name, data.type, data.unit || null, data.color || '#3b82f6', data.icon || null, now, now]
   );
 
   const event = await db.getFirstAsync<Event>(
@@ -121,13 +122,14 @@ export async function setEventValue(
 ): Promise<EventValue> {
   const db = await getDatabase();
 
+  const now = new Date().toISOString();
   // Use INSERT OR REPLACE to handle both insert and update
   await db.runAsync(
-    `INSERT INTO event_values (event_id, date, value, timestamp)
-     VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    `INSERT INTO event_values (event_id, date, value, timestamp, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(event_id, date)
-     DO UPDATE SET value = ?, timestamp = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP`,
-    [eventId, date, value, value]
+     DO UPDATE SET value = ?, timestamp = ?, updated_at = ?`,
+    [eventId, date, value, now, now, now, value, now, now]
   );
 
   const eventValue = await db.getFirstAsync<EventValue>(
@@ -168,15 +170,54 @@ export async function getEventValuesForDateRange(
 }
 
 export async function getEventValuesForDateRangeComplete(
+  eventId: number,
   startDate: string,
-  endDate: string
+  endDate: string,
+  eventType: 'boolean' | 'number' | 'string'
 ): Promise<EventValue[]> {
-  const db = await getDatabase();
-  const values = await db.getAllAsync<EventValue>(
-    'SELECT * FROM event_values WHERE date BETWEEN ? AND ? ORDER BY date ASC, event_id ASC',
-    [startDate, endDate]
-  );
-  return values;
+  const values = await getEventValuesForDateRange(eventId, startDate, endDate);
+
+  const valuesByDate = new Map(values.map((v) => [v.date, v]));
+  const completeValues: EventValue[] = [];
+
+  // Generate all dates in range
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  let currentDate = new Date(start);
+
+  // Determine default value based on event type
+  let defaultValue: string;
+  if (eventType === 'boolean') {
+    defaultValue = 'false';
+  } else if (eventType === 'number') {
+    defaultValue = '0';
+  } else {
+    defaultValue = ''; // string type
+  }
+
+  while (currentDate <= end) {
+    const dateStr = currentDate.toISOString().split('T')[0];
+    const existingValue = valuesByDate.get(dateStr);
+
+    if (existingValue) {
+      completeValues.push(existingValue);
+    } else {
+      // Create a placeholder entry for missing date with default value
+      completeValues.push({
+        id: -1, // Placeholder ID
+        eventId,
+        date: dateStr,
+        value: defaultValue,
+        timestamp: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return completeValues;
 }
 
 export async function getEventValuesForDate(date: string): Promise<EventValue[]> {
