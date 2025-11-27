@@ -14,7 +14,6 @@ import { useColorScheme } from 'nativewind';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEventsStore } from '@/lib/stores/events-store';
 import { getWeekDays, formatDate, isToday, getNextWeek, getPreviousWeek, getDayName } from '@/lib/date-utils';
-import { migrateDatabase } from '@/db/migrate';
 import { EventTracker } from '@/components/event-tracker';
 import { addSampleData } from '@/lib/sample-data';
 import { getEventValuesForDateRange } from '@/db/operations/events';
@@ -114,7 +113,6 @@ export default function HomeScreen() {
           return;
         }
 
-        await migrateDatabase();
         await loadEvents();
       } catch (error) {
         console.error('Failed to initialize:', error);

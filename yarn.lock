@@ -3899,9 +3899,9 @@ expo-splash-screen@~31.0.10:
   dependencies:
     "@expo/prebuild-config" "^54.0.3"
 
-expo-sqlite@^16.0.9:
+expo-sqlite@~16.0.9:
   version "16.0.9"
-  resolved "https://registry.npmjs.org/expo-sqlite/-/expo-sqlite-16.0.9.tgz"
+  resolved "https://registry.yarnpkg.com/expo-sqlite/-/expo-sqlite-16.0.9.tgz#30f16d27f0edda97cba1762c9bcfa0e948909636"
   integrity sha512-pMT52pTko539yZZQUZYfGiAYxQvpTUZIp/dwi2+IidSjPWB2wJi96ByaoNAzxmucarsYZN1F46C1Le6eT2VLkA==
   dependencies:
     await-lock "^2.2.2"
