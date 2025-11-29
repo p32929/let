@@ -1,0 +1,182 @@
+name: Build and Release All Platforms
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    name: Build All Platforms and Create Release
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Get version from app.json
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Version: $VERSION"
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Setup Java (for Android builds)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Xcode (for iOS builds)
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install CocoaPods
+        run: sudo gem install cocoapods
+
+      - name: Build all platforms
+        run: yarn build:all
+
+      - name: Verify build outputs
+        run: |
+          echo "📦 Build artifacts:"
+          ls -lh _build/
+          echo ""
+          echo "🔍 File types:"
+          file _build/*
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          release_name: Release v${{ steps.get_version.outputs.version }}
+          body: |
+            ## 🚀 Life Events Tracker v${{ steps.get_version.outputs.version }}
+
+            ### 📦 Available Downloads
+
+            #### Android
+            - **APK (arm64-v8a)** - Modern 64-bit ARM devices (recommended for most phones)
+            - **APK (armeabi-v7a)** - Legacy 32-bit ARM devices
+            - **APK (x86)** - x86 emulators/devices
+            - **AAB** - Google Play Store upload bundle
+
+            #### iOS
+            - **IPA (Simulator)** - Sideloadable with AltStore/Sideloadly
+
+            #### Web
+            - **Web Build (ZIP)** - Static export for web hosting
+
+            ### 📝 Installation Instructions
+
+            **Android APK:**
+            1. Download the appropriate APK for your device architecture
+            2. Enable "Install from Unknown Sources" in device settings
+            3. Install the APK file
+
+            **iOS IPA:**
+            1. Download the IPA file
+            2. Use AltStore or Sideloadly to install on your device
+            3. Trust the developer certificate in iOS Settings
+
+            **Web:**
+            1. Download and extract the ZIP file
+            2. Deploy to any static hosting service (Vercel, Netlify, GitHub Pages, etc.)
+
+            ---
+
+            🤖 Built with [GitHub Actions](https://github.com/features/actions)
+          draft: false
+          prerelease: false
+
+      - name: Upload APK (arm64-v8a)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./_build/life_events_tracker_${{ steps.get_version.outputs.version }}_arm64-v8a.apk
+          asset_name: life_events_tracker_v${{ steps.get_version.outputs.version }}_arm64-v8a.apk
+          asset_content_type: application/vnd.android.package-archive
+
+      - name: Upload APK (armeabi-v7a)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./_build/life_events_tracker_${{ steps.get_version.outputs.version }}_armeabi-v7a.apk
+          asset_name: life_events_tracker_v${{ steps.get_version.outputs.version }}_armeabi-v7a.apk
+          asset_content_type: application/vnd.android.package-archive
+
+      - name: Upload APK (x86)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./_build/life_events_tracker_${{ steps.get_version.outputs.version }}_x86.apk
+          asset_name: life_events_tracker_v${{ steps.get_version.outputs.version }}_x86.apk
+          asset_content_type: application/vnd.android.package-archive
+
+      - name: Upload AAB
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./_build/life_events_tracker_${{ steps.get_version.outputs.version }}_universal.aab
+          asset_name: life_events_tracker_v${{ steps.get_version.outputs.version }}_universal.aab
+          asset_content_type: application/octet-stream
+
+      - name: Upload IPA (Simulator)
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./_build/life_events_tracker_${{ steps.get_version.outputs.version }}_simulator.ipa
+          asset_name: life_events_tracker_v${{ steps.get_version.outputs.version }}_simulator.ipa
+          asset_content_type: application/octet-stream
+
+      - name: Upload Web Build
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./_build/life_events_tracker_${{ steps.get_version.outputs.version }}_web.zip
+          asset_name: life_events_tracker_v${{ steps.get_version.outputs.version }}_web.zip
+          asset_content_type: application/zip
+
+      - name: Build Summary
+        run: |
+          echo "## ✅ Build and Release Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Release v${{ steps.get_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All platform builds completed successfully and uploaded to GitHub Release." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Artifacts:**" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Android APK (arm64-v8a)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Android APK (armeabi-v7a)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Android APK (x86)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Android AAB" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ iOS IPA (Simulator)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Web Build (ZIP)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🔗 [View Release](https://github.com/${{ github.repository }}/releases/tag/v${{ steps.get_version.outputs.version }})" >> $GITHUB_STEP_SUMMARY

@@ -191,14 +191,15 @@ function buildIPA() {
     error('iOS builds require macOS. Consider using EAS Build for cloud builds.');
   }
 
-  // Prebuild if needed
-  if (!fs.existsSync(path.join(__dirname, '../ios'))) {
+  const iosDir = path.join(__dirname, '../ios');
+  const projectName = appJson.expo.name.replace(/\s+/g, ''); // Remove spaces
+  const podfilePath = path.join(iosDir, 'Podfile');
+
+  // Prebuild if needed (check for Podfile, not just ios/ folder)
+  if (!fs.existsSync(podfilePath)) {
     log('Running expo prebuild for iOS...');
     exec('npx expo prebuild --platform ios');
   }
-
-  const iosDir = path.join(__dirname, '../ios');
-  const projectName = appJson.expo.name.replace(/\s+/g, ''); // Remove spaces
   const xcworkspace = path.join(iosDir, `${projectName}.xcworkspace`);
   const xcodeproj = path.join(iosDir, `${projectName}.xcodeproj`);
 
@@ -217,13 +218,13 @@ function buildIPA() {
 
   const simArchivePath = path.join(iosDir, 'build', `${APP_NAME}_simulator.xcarchive`);
 
-  // Clean previous builds
-  log('Cleaning previous simulator builds...');
-  exec(`cd ios && xcodebuild clean ${buildTarget} -scheme "${scheme}" -configuration Debug && cd ..`);
-
-  // Reinstall pods to apply SQLite fix
+  // Reinstall pods to apply SQLite fix (do this BEFORE clean to ensure workspace exists)
   log('Reinstalling CocoaPods to apply SQLite configuration...');
   exec('cd ios && pod install && cd ..');
+
+  // Clean previous builds (after pod install, so workspace exists)
+  log('Cleaning previous simulator builds...');
+  exec(`cd ios && xcodebuild clean ${buildTarget} -scheme "${scheme}" -configuration Debug && cd ..`);
 
   // Build for simulator (arm64 architecture for Apple Silicon Macs)
   // Note: Using Debug configuration for simulator to skip React Native bundling (uses Metro bundler instead)
