@@ -3,6 +3,9 @@ name: Build and Release All Platforms
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-and-release:
     name: Build All Platforms and Create Release
@@ -45,16 +48,122 @@ jobs:
       - name: Install CocoaPods
         run: sudo gem install cocoapods
 
+      # Build all platforms with single script call
       - name: Build all platforms
-        run: yarn build:all
+        id: build_all
+        continue-on-error: true
+        run: node scripts/build.js apk aab ipa web
 
-      - name: Verify build outputs
+      - name: Check build results
+        id: check_builds
         run: |
-          echo "📦 Build artifacts:"
-          ls -lh _build/
-          echo ""
-          echo "🔍 File types:"
-          file _build/*
+          echo "Checking what was built successfully..."
+
+          # Initialize status variables
+          echo "apk_arm64=false" >> $GITHUB_OUTPUT
+          echo "apk_v7a=false" >> $GITHUB_OUTPUT
+          echo "apk_x86=false" >> $GITHUB_OUTPUT
+          echo "aab=false" >> $GITHUB_OUTPUT
+          echo "ipa=false" >> $GITHUB_OUTPUT
+          echo "web=false" >> $GITHUB_OUTPUT
+
+          # Check each build artifact
+          if [ -f "_build/life_events_tracker_${{ steps.get_version.outputs.version }}_arm64-v8a.apk" ]; then
+            echo "✅ APK arm64-v8a found"
+            echo "apk_arm64=true" >> $GITHUB_OUTPUT
+          fi
+
+          if [ -f "_build/life_events_tracker_${{ steps.get_version.outputs.version }}_armeabi-v7a.apk" ]; then
+            echo "✅ APK armeabi-v7a found"
+            echo "apk_v7a=true" >> $GITHUB_OUTPUT
+          fi
+
+          if [ -f "_build/life_events_tracker_${{ steps.get_version.outputs.version }}_x86.apk" ]; then
+            echo "✅ APK x86 found"
+            echo "apk_x86=true" >> $GITHUB_OUTPUT
+          fi
+
+          if [ -f "_build/life_events_tracker_${{ steps.get_version.outputs.version }}_universal.aab" ]; then
+            echo "✅ AAB found"
+            echo "aab=true" >> $GITHUB_OUTPUT
+          fi
+
+          if [ -f "_build/life_events_tracker_${{ steps.get_version.outputs.version }}_simulator.ipa" ]; then
+            echo "✅ IPA found"
+            echo "ipa=true" >> $GITHUB_OUTPUT
+          fi
+
+          if [ -f "_build/life_events_tracker_${{ steps.get_version.outputs.version }}_web.zip" ]; then
+            echo "✅ Web found"
+            echo "web=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate release notes
+        id: generate_notes
+        run: |
+          # Start building release notes
+          NOTES="## 🚀 Life Events Tracker v${{ steps.get_version.outputs.version }}\n\n"
+          NOTES+="### 📦 Build Status\n\n"
+
+          # Check what succeeded
+          SUCCESS=""
+          FAILED=""
+
+          if [ "${{ steps.check_builds.outputs.apk_arm64 }}" == "true" ]; then
+            SUCCESS+="✅ Android APK (arm64-v8a)\n"
+          else
+            FAILED+="❌ Android APK (arm64-v8a) - Build failed or timed out\n"
+          fi
+
+          if [ "${{ steps.check_builds.outputs.apk_v7a }}" == "true" ]; then
+            SUCCESS+="✅ Android APK (armeabi-v7a)\n"
+          else
+            FAILED+="❌ Android APK (armeabi-v7a) - Build failed or timed out\n"
+          fi
+
+          if [ "${{ steps.check_builds.outputs.apk_x86 }}" == "true" ]; then
+            SUCCESS+="✅ Android APK (x86)\n"
+          else
+            FAILED+="❌ Android APK (x86) - Build failed or timed out\n"
+          fi
+
+          if [ "${{ steps.check_builds.outputs.aab }}" == "true" ]; then
+            SUCCESS+="✅ Android AAB (Play Store)\n"
+          else
+            FAILED+="❌ Android AAB - Build failed or timed out\n"
+          fi
+
+          if [ "${{ steps.check_builds.outputs.ipa }}" == "true" ]; then
+            SUCCESS+="✅ iOS IPA (Simulator)\n"
+          else
+            FAILED+="❌ iOS IPA - Build failed, timed out (iOS builds often take 30+ min on CI), or not supported\n"
+          fi
+
+          if [ "${{ steps.check_builds.outputs.web }}" == "true" ]; then
+            SUCCESS+="✅ Web Build\n"
+          else
+            FAILED+="❌ Web Build - Build failed or timed out\n"
+          fi
+
+          # Combine
+          if [ -n "$SUCCESS" ]; then
+            NOTES+="#### ✅ Successfully Built:\n$SUCCESS\n"
+          fi
+
+          if [ -n "$FAILED" ]; then
+            NOTES+="#### ❌ Failed Builds:\n$FAILED\n"
+          fi
+
+          NOTES+="\n### 📝 Installation Instructions\n\n"
+          NOTES+="**Android APK:** Download APK → Enable Unknown Sources → Install\n\n"
+          NOTES+="**iOS IPA:** Download IPA → Use AltStore/Sideloadly → Trust certificate\n\n"
+          NOTES+="**Web:** Download ZIP → Extract → Deploy to hosting\n\n"
+          NOTES+="---\n\n"
+          NOTES+="🤖 Built with [GitHub Actions](https://github.com/features/actions)"
+
+          # Save to file for use in release
+          echo -e "$NOTES" > release_notes.md
+          cat release_notes.md
 
       - name: Create Release
         id: create_release
@@ -64,46 +173,14 @@ jobs:
         with:
           tag_name: v${{ steps.get_version.outputs.version }}
           release_name: Release v${{ steps.get_version.outputs.version }}
-          body: |
-            ## 🚀 Life Events Tracker v${{ steps.get_version.outputs.version }}
-
-            ### 📦 Available Downloads
-
-            #### Android
-            - **APK (arm64-v8a)** - Modern 64-bit ARM devices (recommended for most phones)
-            - **APK (armeabi-v7a)** - Legacy 32-bit ARM devices
-            - **APK (x86)** - x86 emulators/devices
-            - **AAB** - Google Play Store upload bundle
-
-            #### iOS
-            - **IPA (Simulator)** - Sideloadable with AltStore/Sideloadly
-
-            #### Web
-            - **Web Build (ZIP)** - Static export for web hosting
-
-            ### 📝 Installation Instructions
-
-            **Android APK:**
-            1. Download the appropriate APK for your device architecture
-            2. Enable "Install from Unknown Sources" in device settings
-            3. Install the APK file
-
-            **iOS IPA:**
-            1. Download the IPA file
-            2. Use AltStore or Sideloadly to install on your device
-            3. Trust the developer certificate in iOS Settings
-
-            **Web:**
-            1. Download and extract the ZIP file
-            2. Deploy to any static hosting service (Vercel, Netlify, GitHub Pages, etc.)
-
-            ---
-
-            🤖 Built with [GitHub Actions](https://github.com/features/actions)
+          body_path: release_notes.md
           draft: false
           prerelease: false
 
+      # Upload only successful builds
       - name: Upload APK (arm64-v8a)
+        if: steps.check_builds.outputs.apk_arm64 == 'true'
+        continue-on-error: true
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -114,6 +191,8 @@ jobs:
           asset_content_type: application/vnd.android.package-archive
 
       - name: Upload APK (armeabi-v7a)
+        if: steps.check_builds.outputs.apk_v7a == 'true'
+        continue-on-error: true
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -124,6 +203,8 @@ jobs:
           asset_content_type: application/vnd.android.package-archive
 
       - name: Upload APK (x86)
+        if: steps.check_builds.outputs.apk_x86 == 'true'
+        continue-on-error: true
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -134,6 +215,8 @@ jobs:
           asset_content_type: application/vnd.android.package-archive
 
       - name: Upload AAB
+        if: steps.check_builds.outputs.aab == 'true'
+        continue-on-error: true
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -144,6 +227,8 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Upload IPA (Simulator)
+        if: steps.check_builds.outputs.ipa == 'true'
+        continue-on-error: true
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -154,6 +239,8 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Upload Web Build
+        if: steps.check_builds.outputs.web == 'true'
+        continue-on-error: true
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -164,19 +251,54 @@ jobs:
           asset_content_type: application/zip
 
       - name: Build Summary
+        if: always()
         run: |
-          echo "## ✅ Build and Release Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "## 📦 Build and Release Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📦 Release v${{ steps.get_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "### Release v${{ steps.get_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "All platform builds completed successfully and uploaded to GitHub Release." >> $GITHUB_STEP_SUMMARY
+
+          # Success section
+          echo "### ✅ Successfully Built:" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.check_builds.outputs.apk_arm64 }}" == "true" ]; then
+            echo "- Android APK (arm64-v8a)" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ steps.check_builds.outputs.apk_v7a }}" == "true" ]; then
+            echo "- Android APK (armeabi-v7a)" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ steps.check_builds.outputs.apk_x86 }}" == "true" ]; then
+            echo "- Android APK (x86)" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ steps.check_builds.outputs.aab }}" == "true" ]; then
+            echo "- Android AAB" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ steps.check_builds.outputs.ipa }}" == "true" ]; then
+            echo "- iOS IPA (Simulator)" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ steps.check_builds.outputs.web }}" == "true" ]; then
+            echo "- Web Build" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Artifacts:**" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Android APK (arm64-v8a)" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Android APK (armeabi-v7a)" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Android APK (x86)" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Android AAB" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ iOS IPA (Simulator)" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Web Build (ZIP)" >> $GITHUB_STEP_SUMMARY
+
+          # Failed section
+          echo "### ❌ Failed Builds:" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.check_builds.outputs.apk_arm64 }}" != "true" ]; then
+            echo "- Android APK (arm64-v8a)" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ steps.check_builds.outputs.apk_v7a }}" != "true" ]; then
+            echo "- Android APK (armeabi-v7a)" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ steps.check_builds.outputs.apk_x86 }}" != "true" ]; then
+            echo "- Android APK (x86)" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ steps.check_builds.outputs.aab }}" != "true" ]; then
+            echo "- Android AAB" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ steps.check_builds.outputs.ipa }}" != "true" ]; then
+            echo "- iOS IPA (likely timed out - iOS builds take 30+ min on CI)" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ steps.check_builds.outputs.web }}" != "true" ]; then
+            echo "- Web Build" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "🔗 [View Release](https://github.com/${{ github.repository }}/releases/tag/v${{ steps.get_version.outputs.version }})" >> $GITHUB_STEP_SUMMARY
