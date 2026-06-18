@@ -21,6 +21,23 @@ export function EventTracker({ event, date }: EventTrackerProps) {
   const [isLoading, setIsLoading] = React.useState(true);
   const dateStr = formatDate(date);
 
+  // Mirror the current value in a ref so hold-to-repeat can read the latest
+  // number without being stuck on a stale closure value.
+  const valueRef = React.useRef(value);
+  React.useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
+  // Timer used while the +/- button is held down.
+  const holdTimer = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const stopHold = React.useCallback(() => {
+    if (holdTimer.current) {
+      clearInterval(holdTimer.current);
+      holdTimer.current = null;
+    }
+  }, []);
+  React.useEffect(() => stopHold, [stopHold]);
+
   // Load existing value
   React.useEffect(() => {
     const loadValue = async () => {
@@ -61,26 +78,38 @@ export function EventTracker({ event, date }: EventTrackerProps) {
   };
 
   const handleNumberChange = async (newValue: string) => {
-    // Only allow integers (no decimals)
-    if (newValue === '' || /^\d+$/.test(newValue)) {
+    // Allow whole numbers and decimals (e.g. 1.5 hours), but nothing else.
+    if (newValue === '' || /^\d*\.?\d*$/.test(newValue)) {
       setValue(newValue);
       await saveValue(newValue);
     }
   };
 
-  const handleNumberIncrement = async () => {
-    const currentNum = value === '' ? 0 : Number(value);
-    const newValue = (currentNum + 1).toString();
-    setValue(newValue);
-    await saveValue(newValue);
-  };
+  // Shared step logic for + / -, reading the latest value from the ref so it
+  // works correctly when the button is held down and repeats.
+  const stepNumber = React.useCallback(
+    (delta: number) => {
+      const current = valueRef.current === '' ? 0 : Number(valueRef.current) || 0;
+      const next = Math.max(0, current + delta).toString();
+      valueRef.current = next;
+      setValue(next);
+      saveValue(next);
+    },
+    [saveValue]
+  );
 
-  const handleNumberDecrement = async () => {
-    const currentNum = value === '' ? 0 : Number(value);
-    const newValue = Math.max(0, currentNum - 1).toString();
-    setValue(newValue);
-    await saveValue(newValue);
-  };
+  // Begin repeating a step after the button is held briefly.
+  const startHold = React.useCallback(
+    (delta: number) => {
+      stopHold();
+      stepNumber(delta); // one immediate step on long-press
+      holdTimer.current = setInterval(() => stepNumber(delta), 100);
+    },
+    [stepNumber, stopHold]
+  );
+
+  const handleNumberIncrement = () => stepNumber(1);
+  const handleNumberDecrement = () => stepNumber(-1);
 
   const handleTextChange = async (newValue: string) => {
     setValue(newValue);
@@ -98,10 +127,12 @@ export function EventTracker({ event, date }: EventTrackerProps) {
     );
   }
 
+  // A number counts as "tracked" as soon as a value is entered — including an
+  // intentional 0 (e.g. "0 cigarettes today" is real, meaningful data).
   const hasValue = event.type === 'boolean'
     ? value === 'true'
     : event.type === 'number'
-    ? value !== '' && parseFloat(value) > 0
+    ? value.trim() !== '' && !isNaN(parseFloat(value))
     : value.trim() !== '';
 
   return (
@@ -131,23 +162,30 @@ export function EventTracker({ event, date }: EventTrackerProps) {
               size="icon"
               variant="outline"
               onPress={handleNumberDecrement}
+              onLongPress={() => startHold(-1)}
+              onPressOut={stopHold}
               disabled={value === '' || Number(value) <= 0}
               className="h-10 w-10"
+              accessibilityLabel={`Decrease ${event.name}`}
             >
               <Icon as={MinusIcon} className="size-4" />
             </Button>
             <Input
               value={value}
               onChangeText={handleNumberChange}
-              keyboardType="number-pad"
+              keyboardType="decimal-pad"
               placeholder="0"
               className="text-center native:h-10 w-20 text-base font-semibold"
+              accessibilityLabel={`${event.name} value`}
             />
             <Button
               size="icon"
               variant="outline"
               onPress={handleNumberIncrement}
+              onLongPress={() => startHold(1)}
+              onPressOut={stopHold}
               className="h-10 w-10"
+              accessibilityLabel={`Increase ${event.name}`}
             >
               <Icon as={PlusIcon} className="size-4" />
             </Button>
@@ -170,6 +208,7 @@ export function EventTracker({ event, date }: EventTrackerProps) {
           variant="ghost"
           onPress={() => router.push({ pathname: '/edit-event' as any, params: { id: event.id.toString() } })}
           className="h-10 w-10"
+          accessibilityLabel={`Edit ${event.name}`}
         >
           <Icon as={Settings2Icon} className="size-4 text-[#737373] dark:text-[#a3a3a3]" />
         </Button>

@@ -574,18 +574,6 @@ export default function DashboardScreen() {
     return mergedPatterns.sort((a, b) => b.confidence - a.confidence);
   };
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 80) return 'text-green-600';
-    if (confidence >= 60) return 'text-yellow-600';
-    return 'text-orange-600';
-  };
-
-  const getConfidenceLabel = (confidence: number) => {
-    if (confidence >= 80) return 'High confidence';
-    if (confidence >= 60) return 'Medium confidence';
-    return 'Low confidence';
-  };
-
   const getStrengthColor = (strength: PatternStrength) => {
     switch (strength) {
       case 'very-strong': return '#16a34a'; // green-600
@@ -993,7 +981,7 @@ export default function DashboardScreen() {
     }
 
     const patternsText = patterns
-      .map((p, i) => `${i + 1}. ${p.description} (${p.confidence}% confidence, ${getStrengthLabel(p.strength)})`)
+      .map((p, i) => `${i + 1}. ${p.description} (${getStrengthLabel(p.strength)}, based on ${p.sampleSize} days)`)
       .join('\n\n');
 
     await Clipboard.setStringAsync(patternsText);
@@ -1197,11 +1185,11 @@ export default function DashboardScreen() {
                       {/* Pattern Metadata */}
                       <View className="pt-3 border-t border-[#e5e5e5] dark:border-[#262626]">
                         <View className="flex-row items-center justify-between">
-                          <Text className={`text-xs font-medium ${getConfidenceColor(pattern.confidence)}`}>
-                            Happens {pattern.confidence}% of the time
+                          <Text className="text-xs font-medium" style={{ color: getStrengthColor(pattern.strength) }}>
+                            {getStrengthLabel(pattern.strength)}
                           </Text>
                           <Text className="text-xs text-[#737373] dark:text-[#a3a3a3]">
-                            {pattern.sampleSize} samples
+                            Based on {pattern.sampleSize} days
                           </Text>
                         </View>
                       </View>

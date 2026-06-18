@@ -204,9 +204,14 @@ export default function DashboardScreen() {
       return;
     }
 
+    // Cache key includes a signature of the events' editable fields, so editing
+    // an event (name/type/unit/color) busts the cache instead of showing stale numbers.
+    const eventsSig = events.map((e) => `${e.id}:${e.name}:${e.type}:${e.unit}:${e.color}`).join(',');
+    const cacheKey = `${summaryView}|${eventsSig}`;
+
     // Check cache first
-    if (summaryStatsCache[summaryView]) {
-      setSummaryStats(summaryStatsCache[summaryView]);
+    if (summaryStatsCache[cacheKey]) {
+      setSummaryStats(summaryStatsCache[cacheKey]);
       return;
     }
 
@@ -274,8 +279,9 @@ export default function DashboardScreen() {
           const last14Days = dataPoints.slice(-trendDays);
           stat.trendData = last14Days.map(d => (d.value === 'true' || d.value === '1') ? 1 : 0);
 
-          // Consistency: percentage of days with data
-          const trackedDays = dataPoints.filter(d => d.value === 'true' || d.value === 'false' || d.value === '1' || d.value === '0').length;
+          // Consistency: percentage of days you actually logged something.
+          // Only count REAL entries — auto-filled placeholder days have id === -1.
+          const trackedDays = dataPoints.filter(d => d.id !== -1).length;
           stat.consistency = dataPoints.length > 0 ? (trackedDays / dataPoints.length) * 100 : 0;
         } else if (event.type === 'number') {
           const numericValues = dataPoints
@@ -295,11 +301,8 @@ export default function DashboardScreen() {
             return isNaN(val) ? 0 : val;
           });
 
-          // Consistency
-          const trackedDays = dataPoints.filter(d => {
-            const val = parseFloat(d.value as string);
-            return !isNaN(val) && val >= 0;
-          }).length;
+          // Consistency: only real entries count (placeholder days have id === -1).
+          const trackedDays = dataPoints.filter(d => d.id !== -1).length;
           stat.consistency = dataPoints.length > 0 ? (trackedDays / dataPoints.length) * 100 : 0;
         } else if (event.type === 'string') {
           const stringValues = dataPoints
@@ -316,11 +319,8 @@ export default function DashboardScreen() {
             stat.mostCommon = mostCommon ? `${mostCommon[0]} (${mostCommon[1]}x)` : undefined;
           }
 
-          // Consistency
-          const trackedDays = dataPoints.filter(d => {
-            const val = d.value as string;
-            return val && val.trim() !== '';
-          }).length;
+          // Consistency: only real entries count (placeholder days have id === -1).
+          const trackedDays = dataPoints.filter(d => d.id !== -1).length;
           stat.consistency = dataPoints.length > 0 ? (trackedDays / dataPoints.length) * 100 : 0;
         }
 
@@ -328,7 +328,7 @@ export default function DashboardScreen() {
       });
 
       setSummaryStats(stats);
-      setSummaryStatsCache(prev => ({ ...prev, [summaryView]: stats }));
+      setSummaryStatsCache(prev => ({ ...prev, [cacheKey]: stats }));
     } catch (error) {
       console.error('Failed to load summary data:', error);
     } finally {

@@ -2,12 +2,19 @@ import * as SQLite from 'expo-sqlite';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
+// Bump this whenever the schema changes, then add a matching `case` in runMigrations().
+// This lets us safely update existing users' databases instead of risking data loss.
+const SCHEMA_VERSION = 1;
+
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (db) {
     return db;
   }
 
   db = await SQLite.openDatabaseAsync('life-events.db');
+
+  // Make sure foreign-key cascades (e.g. deleting an event removes its values) are enforced.
+  await db.execAsync('PRAGMA foreign_keys = ON;');
 
   // Create tables if they don't exist
   await db.execAsync(`
@@ -40,7 +47,30 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
     CREATE INDEX IF NOT EXISTS idx_events_order ON events("order");
   `);
 
+  await runMigrations(db);
+
   return db;
+}
+
+/**
+ * Step an existing database forward to the current SCHEMA_VERSION.
+ * Each new schema change adds a `case` below that upgrades from the previous version.
+ */
+async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
+  const row = await database.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+  let version = row?.user_version ?? 0;
+
+  while (version < SCHEMA_VERSION) {
+    switch (version) {
+      // case 1: await database.execAsync('ALTER TABLE events ADD COLUMN notes TEXT'); break;
+      default:
+        break;
+    }
+    version += 1;
+  }
+
+  // PRAGMA doesn't accept bound parameters, so the value is inlined (it's our own constant).
+  await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }
 
 export async function closeDatabase() {

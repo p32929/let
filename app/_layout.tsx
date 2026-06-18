@@ -11,6 +11,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import * as React from 'react';
 import { storage } from '@/lib/storage';
+import { syncReminderOnLaunch } from '@/lib/notifications';
 import { ErrorBoundary as CustomErrorBoundary } from '@/components/ErrorBoundary';
 
 export {
@@ -20,12 +21,26 @@ export {
 
 export default function RootLayout() {
   const systemColorScheme = useSystemColorScheme();
-  const { colorScheme } = useColorScheme();
+  const { colorScheme, setColorScheme } = useColorScheme();
 
   const activeColorScheme = colorScheme ?? systemColorScheme ?? 'light';
   const isDark = activeColorScheme === 'dark';
 
-  console.log('[Theme] Current scheme:', { activeColorScheme, isDark, colorScheme, systemColorScheme });
+  // Restore the user's saved theme choice on launch so it survives app restarts.
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const saved = await storage.getItem('color-scheme');
+        if (saved === 'light' || saved === 'dark') {
+          setColorScheme(saved);
+        }
+      } catch {
+        // Non-fatal: fall back to the system theme.
+      }
+      // Re-arm the daily reminder (if the user has it on) after a restart.
+      syncReminderOnLaunch().catch(() => {});
+    })();
+  }, []);
 
   return (
     <CustomErrorBoundary>

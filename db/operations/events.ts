@@ -100,6 +100,15 @@ export async function deleteEvent(id: number): Promise<void> {
   await db.runAsync('DELETE FROM events WHERE id = ?', [id]);
 }
 
+/**
+ * Delete every event (and, via cascade, all their values) in a single statement.
+ * Much faster and safer than looping one-by-one when resetting or clearing on import.
+ */
+export async function deleteAllEvents(): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync('DELETE FROM events');
+}
+
 export async function reorderEvents(eventIds: number[]): Promise<void> {
   const db = await getDatabase();
 
@@ -218,6 +227,24 @@ export async function getEventValuesForDateRangeComplete(
   }
 
   return completeValues;
+}
+
+/**
+ * Get all event values (across every event) within a date range in ONE query.
+ * Used by the home screen to compute each day's completion without firing
+ * a separate query per event per day.
+ */
+export async function getAllEventValuesInRange(
+  startDate: string,
+  endDate: string
+): Promise<EventValue[]> {
+  const db = await getDatabase();
+  // Alias event_id -> eventId so callers can rely on the camelCase field
+  // (expo-sqlite returns raw column names otherwise).
+  return db.getAllAsync<EventValue>(
+    'SELECT *, event_id AS eventId FROM event_values WHERE date BETWEEN ? AND ? ORDER BY date ASC',
+    [startDate, endDate]
+  );
 }
 
 export async function getEventValuesForDate(date: string): Promise<EventValue[]> {

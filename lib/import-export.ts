@@ -53,10 +53,11 @@ export async function exportData(): Promise<ExportData> {
   // Get all event values (pass empty string to get all)
   const values = await getEventValuesForDate('');
 
-  // Filter out default values to reduce file size:
-  // - Boolean: skip "false"
-  // - Number: skip "0"
+  // Filter out only TRUE default/noise values to reduce file size:
+  // - Boolean: skip "false" (an un-ticked box is the same as untracked)
   // - String: skip empty strings
+  // NOTE: numbers are kept as-is — an explicit 0 (e.g. "0 cigarettes") is real
+  // data the user chose to record, so we must not drop it.
   const allEventValues = values
     .filter((v) => {
       const eventType = eventIdToType.get(v.eventId);
@@ -64,7 +65,6 @@ export async function exportData(): Promise<ExportData> {
 
       // Skip default values
       if (eventType === 'boolean' && v.value === 'false') return false;
-      if (eventType === 'number' && (v.value === '0' || v.value === '0.0')) return false;
       if (eventType === 'string' && v.value === '') return false;
 
       return true;
@@ -107,21 +107,33 @@ export async function importData(data: ExportData, options: {
   try {
     onProgress?.(0, 'Starting import...');
 
-    // Validate data structure
-    if (!data.version || !data.events || !data.eventValues) {
-      throw new Error('Invalid export file format');
+    // Validate overall structure
+    if (!data.version || !Array.isArray(data.events) || !Array.isArray(data.eventValues)) {
+      throw new Error('Invalid backup file: missing or malformed events/values.');
     }
 
-    // Import needed operations
-    const { createEvent, deleteEvent, setEventValue } = await import('@/db/operations/events');
+    // Validate each event so a corrupt/hand-edited file can't poison the database.
+    const validTypes = ['boolean', 'number', 'string'];
+    const isHexColor = (c: unknown) => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c);
+    data.events.forEach((e, i) => {
+      if (!e || typeof e.name !== 'string' || e.name.trim() === '') {
+        throw new Error(`Invalid backup file: event #${i + 1} has no name.`);
+      }
+      if (!validTypes.includes(e.type)) {
+        throw new Error(`Invalid backup file: event "${e.name}" has an unknown type "${e.type}".`);
+      }
+      if (!isHexColor(e.color)) {
+        throw new Error(`Invalid backup file: event "${e.name}" has an invalid color.`);
+      }
+    });
 
-    // Clear existing data if requested
+    // Import needed operations
+    const { createEvent, setEventValue, deleteAllEvents } = await import('@/db/operations/events');
+
+    // Clear existing data if requested (single fast statement instead of a loop)
     if (clearExisting) {
       onProgress?.(10, 'Clearing existing data...');
-      const existingEvents = await getEvents();
-      for (const event of existingEvents) {
-        await deleteEvent(event.id);
-      }
+      await deleteAllEvents();
     }
 
     onProgress?.(20, 'Importing events...');
@@ -160,6 +172,7 @@ export async function importData(data: ExportData, options: {
     // Import event values using event indices
     const totalValues = data.eventValues.length;
     const batchSize = 100;
+    let skippedValues = 0;
 
     for (let i = 0; i < totalValues; i += batchSize) {
       const batch = data.eventValues.slice(i, Math.min(i + batchSize, totalValues));
@@ -167,8 +180,11 @@ export async function importData(data: ExportData, options: {
       await Promise.all(
         batch.map(async (valueData) => {
           const newEventId = idMapping[valueData.eventIndex];
-          if (newEventId) {
+          // A value pointing at an event index that doesn't exist is corrupt — skip and count it.
+          if (newEventId && valueData.date && typeof valueData.value === 'string') {
             await setEventValue(newEventId, valueData.date, valueData.value);
+          } else {
+            skippedValues++;
           }
         })
       );
@@ -200,7 +216,10 @@ export async function importData(data: ExportData, options: {
 
     return {
       success: true,
-      message: `Successfully imported ${data.events.length} events and ${data.eventValues.length} values`,
+      message:
+        `Successfully imported ${data.events.length} events and ` +
+        `${data.eventValues.length - skippedValues} values` +
+        (skippedValues > 0 ? ` (${skippedValues} invalid entries skipped)` : ''),
     };
   } catch (error) {
     console.error('Import error:', error);

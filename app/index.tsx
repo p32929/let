@@ -3,7 +3,7 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Stack, router } from 'expo-router';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon, LayoutDashboardIcon, AlertCircleIcon, InfoIcon } from 'lucide-react-native';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon, LayoutDashboardIcon, AlertCircleIcon, InfoIcon, BellIcon, BellOffIcon } from 'lucide-react-native';
 import Constants from 'expo-constants';
 import * as React from 'react';
 import { View, ScrollView, Pressable, Platform, Linking } from 'react-native';
@@ -16,11 +16,12 @@ import { useEventsStore } from '@/lib/stores/events-store';
 import { getWeekDays, formatDate, isToday, getNextWeek, getPreviousWeek, getDayName } from '@/lib/date-utils';
 import { EventTracker } from '@/components/event-tracker';
 import { addSampleData } from '@/lib/sample-data';
-import { getEventValuesForDateRange } from '@/db/operations/events';
+import { getAllEventValuesInRange, deleteAllEvents } from '@/db/operations/events';
 import { exportData, importData, downloadExportFile, readImportFile } from '@/lib/import-export';
-import { getEvents as dbGetEvents, deleteEvent } from '@/db/operations/events';
 import { Calendar } from '@/components/ui/calendar';
 import { logError } from '@/lib/error-tracker';
+import { storage } from '@/lib/storage';
+import { isReminderEnabled, setReminder } from '@/lib/notifications';
 import { isOnboardingCompleted } from './onboarding';
 import {
   AlertDialog,
@@ -56,6 +57,8 @@ export default function HomeScreen() {
   const [importMessage, setImportMessage] = React.useState('');
   const [clearExisting, setClearExisting] = React.useState(false);
   const [weekEventCompletion, setWeekEventCompletion] = React.useState<Record<string, { total: number; completed: number }>>({});
+  const [reminderEnabled, setReminderEnabled] = React.useState(false);
+  const [showReminderDeniedDialog, setShowReminderDeniedDialog] = React.useState(false);
   const { events, loadEvents, isLoading } = useEventsStore();
   const { colorScheme, setColorScheme } = useColorScheme();
   const insets = useSafeAreaInsets();
@@ -77,6 +80,7 @@ export default function HomeScreen() {
         className="rounded-full"
         onPress={() => setShowMenu(!showMenu)}
         disabled={isAnyDialogShowing}
+        accessibilityLabel="Open menu"
       >
         <Icon as={MoreVerticalIcon} className="size-5" />
       </Button>
@@ -86,6 +90,7 @@ export default function HomeScreen() {
         className="rounded-full"
         onPress={() => router.push('/add-event')}
         disabled={isAnyDialogShowing}
+        accessibilityLabel="Add new event"
       >
         <Icon as={PlusIcon} className="size-5" />
       </Button>
@@ -123,7 +128,9 @@ export default function HomeScreen() {
 
   const weekDays = React.useMemo(() => getWeekDays(currentWeekDate), [currentWeekDate]);
 
-  // Load event completion for each day of the week
+  // Load each day's completion for the visible week.
+  // One ranged query for the whole week, then tally in memory (instead of one
+  // query per event per day).
   React.useEffect(() => {
     const loadWeekCompletion = async () => {
       if (events.length === 0) {
@@ -131,27 +138,34 @@ export default function HomeScreen() {
         return;
       }
 
-      const completion: Record<string, { total: number; completed: number }> = {};
+      const startStr = formatDate(weekDays[0]);
+      const endStr = formatDate(weekDays[6]);
 
+      // event id -> its type, so we can judge "completed" correctly per type.
+      const typeById = new Map(events.map((e) => [e.id, e.type]));
+      const allValues = await getAllEventValuesInRange(startStr, endStr);
+
+      const completedByDate: Record<string, number> = {};
+      for (const v of allValues) {
+        const type = typeById.get(v.eventId);
+        if (!type) continue; // value belongs to a deleted event
+
+        const done =
+          type === 'boolean'
+            ? v.value === 'true'
+            : type === 'number'
+            ? v.value !== '' && parseFloat(v.value) > 0
+            : v.value.trim() !== '';
+
+        if (done) {
+          completedByDate[v.date] = (completedByDate[v.date] || 0) + 1;
+        }
+      }
+
+      const completion: Record<string, { total: number; completed: number }> = {};
       for (const day of weekDays) {
         const dateStr = formatDate(day);
-        let completed = 0;
-
-        for (const event of events) {
-          const values = await getEventValuesForDateRange(event.id, dateStr, dateStr);
-          if (values.length > 0 && values[0].value) {
-            // Count as completed if has any value (for booleans, strings, or numbers)
-            if (event.type === 'boolean') {
-              if (values[0].value === 'true') completed++;
-            } else if (event.type === 'number') {
-              if (values[0].value && parseFloat(values[0].value) > 0) completed++;
-            } else {
-              if (values[0].value.trim() !== '') completed++;
-            }
-          }
-        }
-
-        completion[dateStr] = { total: events.length, completed };
+        completion[dateStr] = { total: events.length, completed: completedByDate[dateStr] || 0 };
       }
 
       setWeekEventCompletion(completion);
@@ -159,6 +173,23 @@ export default function HomeScreen() {
 
     loadWeekCompletion();
   }, [weekDays, events]);
+
+  // Load whether the daily reminder is currently on.
+  React.useEffect(() => {
+    isReminderEnabled().then(setReminderEnabled).catch(() => {});
+  }, []);
+
+  const handleToggleReminder = async () => {
+    const next = !reminderEnabled;
+    const ok = await setReminder(next);
+    if (ok) {
+      setReminderEnabled(next);
+    } else if (next) {
+      // Couldn't enable — usually permission was denied (or module unavailable).
+      setReminderEnabled(false);
+      setShowReminderDeniedDialog(true);
+    }
+  };
 
   const handlePreviousWeek = () => {
     setCurrentWeekDate(getPreviousWeek(currentWeekDate));
@@ -209,11 +240,7 @@ export default function HomeScreen() {
     try {
       setShowResetDialog(false);
       setIsResetting(true);
-      const { getEvents: dbGetEvents, deleteEvent } = await import('@/db/operations/events');
-      const existingEvents = await dbGetEvents();
-      for (const event of existingEvents) {
-        await deleteEvent(event.id);
-      }
+      await deleteAllEvents();
       await loadEvents();
     } catch (error) {
       console.error('Failed to reset data:', error);
@@ -367,6 +394,7 @@ export default function HomeScreen() {
                 onPress={handlePreviousWeek}
                 className="rounded-full"
                 disabled={isBlockingDialogShowing}
+                accessibilityLabel="Previous week"
               >
                 <Icon as={ChevronLeftIcon} className="size-5" />
               </Button>
@@ -374,6 +402,8 @@ export default function HomeScreen() {
                 onPress={() => setShowCalendar(true)}
                 className="flex-1 items-center"
                 disabled={isBlockingDialogShowing}
+                accessibilityRole="button"
+                accessibilityLabel="Pick a date from calendar"
               >
                 <Text className="text-lg font-semibold text-[#0a0a0a] dark:text-[#fafafa]">
                   {formatDate(weekDays[0], 'MMM d')} - {formatDate(weekDays[6], 'MMM d, yyyy')}
@@ -385,6 +415,7 @@ export default function HomeScreen() {
                 onPress={handleNextWeek}
                 className="rounded-full"
                 disabled={isBlockingDialogShowing}
+                accessibilityLabel="Next week"
               >
                 <Icon as={ChevronRightIcon} className="size-5" />
               </Button>
@@ -423,6 +454,15 @@ export default function HomeScreen() {
                     >
                       {formatDate(day, 'd')}
                     </Text>
+                    {/* Daily completion bar: how many of today's events are done */}
+                    {!isFuture && completion && completion.total > 0 && (
+                      <View className="mt-1 h-1 w-5 overflow-hidden rounded-full bg-[#e5e5e5] dark:bg-[#404040]">
+                        <View
+                          className={selected ? 'bg-[#fafafa] dark:bg-[#171717]' : 'bg-[#22c55e]'}
+                          style={{ width: `${completionPercent}%`, height: '100%' }}
+                        />
+                      </View>
+                    )}
                   </Pressable>
                 );
               })}
@@ -574,8 +614,20 @@ export default function HomeScreen() {
             </Pressable>
             <Pressable
               className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
+              onPress={handleToggleReminder}
+            >
+              <Icon as={reminderEnabled ? BellIcon : BellOffIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
+              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">
+                {reminderEnabled ? 'Daily Reminder: On (8 PM)' : 'Daily Reminder: Off'}
+              </Text>
+            </Pressable>
+            <Pressable
+              className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
               onPress={() => {
-                setColorScheme(colorScheme === 'dark' ? 'light' : 'dark');
+                const next = colorScheme === 'dark' ? 'light' : 'dark';
+                setColorScheme(next);
+                // Remember the choice so it survives app restarts.
+                storage.setItem('color-scheme', next).catch(() => {});
               }}
             >
               <Icon as={colorScheme === 'dark' ? SunIcon : MoonIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
@@ -912,6 +964,24 @@ export default function HomeScreen() {
               <Text>View Reports</Text>
             </AlertDialogAction>
             <AlertDialogAction onPress={() => setShowImportErrorDialog(false)}>
+              <Text>OK</Text>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reminder Permission Denied Dialog */}
+      <AlertDialog open={showReminderDeniedDialog} onOpenChange={setShowReminderDeniedDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Couldn't turn on reminders</AlertDialogTitle>
+            <AlertDialogDescription>
+              Notifications permission is off, so the daily reminder can't be set. Enable
+              notifications for LET in your device settings, then try again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onPress={() => setShowReminderDeniedDialog(false)}>
               <Text>OK</Text>
             </AlertDialogAction>
           </AlertDialogFooter>
