@@ -6,7 +6,6 @@ A simple yet powerful mobile app to track daily habits, life events, and discove
 
 ## Screenshots
 
-
 | Onboarding | Home | Dashboard | Patterns |
 |:----------:|:----:|:---------:|:--------:|
 | [![Onboarding](https://res.cloudinary.com/p32929/image/upload/c_scale,h_200/v1764069334/LET/886cfe1c-1193-4a66-be71-661001a8c376.png)](https://res.cloudinary.com/p32929/image/upload/v1764069334/LET/886cfe1c-1193-4a66-be71-661001a8c376.png) | [![Home](https://res.cloudinary.com/p32929/image/upload/c_scale,h_200/v1764069682/LET/99a23514-d776-4a29-afd9-a700ab6b252e.png)](https://res.cloudinary.com/p32929/image/upload/v1764069682/LET/99a23514-d776-4a29-afd9-a700ab6b252e.png) | [![Dashboard](https://res.cloudinary.com/p32929/image/upload/c_scale,h_200/v1764069728/LET/d77e1726-84ad-47f7-ab7b-f013dd2967e5.png)](https://res.cloudinary.com/p32929/image/upload/v1764069728/LET/d77e1726-84ad-47f7-ab7b-f013dd2967e5.png) | [![Patterns](https://res.cloudinary.com/p32929/image/upload/c_scale,h_200/v1764069699/LET/4a9290a4-f80d-400b-bfce-3c9d621f1071.png)](https://res.cloudinary.com/p32929/image/upload/v1764069699/LET/4a9290a4-f80d-400b-bfce-3c9d621f1071.png) |
@@ -90,24 +89,6 @@ yarn android # Android
 yarn web     # Web
 ```
 
-## Contributing
-
-Contributions are welcome! But before you dive in:
-
-1. **Create an issue first** - Let's discuss what you want to change
-2. **Wait for approval** - I might have opinions (or the AI might)
-3. **Fork the repo** - Make your changes
-4. **Submit a PR** - Reference the issue
-
-Please don't just randomly submit PRs without discussion. We're all friends here, let's talk first!
-
-### Code Style
-
-- TypeScript all the way
-- Functional components with hooks
-- NativeWind for styling
-- Keep it simple, keep it clean
-
 ## FAQ
 
 **Q: Can I use this for commercial purposes?**
@@ -167,6 +148,26 @@ So I stuck with React Native + Expo, debugged issues platform by platform, and e
 - **The Expo Team** - For making React Native actually usable
 - **You** - For reading this far (seriously, why are you still here?)
 
+## Contributing
+
+Contributions are warmly welcomed and greatly appreciated! Whether it's a bug fix, new feature, or improvement, your input helps make this project better for everyone.
+
+Before submitting a pull request, please:
+
+1. Create an issue describing the feature or bug fix you'd like to work on
+2. Wait for discussion and approval to ensure alignment with project goals
+3. Fork the repository and create your feature branch
+4. Submit your pull request with a clear description of changes
+
+This approach helps avoid duplicate efforts and ensures smooth collaboration. Thank you for considering contributing!
+
+### Code Style
+
+- TypeScript all the way
+- Functional components with hooks
+- NativeWind for styling
+- Keep it simple, keep it clean
+
 ## License
 
 MIT License - Do whatever you want with it. Just don't blame me if it breaks.
@@ -178,6 +179,19 @@ MIT License - Do whatever you want with it. Just don't blame me if it breaks.
   <br>
   <sub>No developers were harmed in the making of this app</sub>
 </p>
+
+## Share
+
+Sharing this repository with your friends is just one click away from here
+
+[![facebook](https://user-images.githubusercontent.com/6418354/179013321-ac1d1452-0689-493f-9066-940cf2302b6e.png)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/p32929/let/)
+[![twitter](https://user-images.githubusercontent.com/6418354/179013351-7d8d6d1c-4ce2-46ab-bef8-4c4765a1b888.png)](https://twitter.com/intent/tweet?url=https://github.com/p32929/let/)
+[![tumblr](https://user-images.githubusercontent.com/6418354/179013343-3111f55a-3b90-40c7-8487-9777348672b0.png)](https://www.tumblr.com/share?v=3&u=https://github.com/p32929/let/)
+[![pocket](https://user-images.githubusercontent.com/6418354/179013334-b095c45f-becf-49f4-9ee1-5a731a9b1f85.png)](https://getpocket.com/save?url=https://github.com/p32929/let/)
+[![pinterest](https://user-images.githubusercontent.com/6418354/179013331-44cd9206-11b1-4b65-becb-5863b61c828f.png)](https://pinterest.com/pin/create/button/?url=https://github.com/p32929/let/)
+[![reddit](https://user-images.githubusercontent.com/6418354/179013338-7416ae3f-73ba-4522-86e1-1374d7082d22.png)](https://www.reddit.com/submit?url=https://github.com/p32929/let/)
+[![linkedin](https://user-images.githubusercontent.com/6418354/179013327-ca7b7102-1da8-4b1c-858f-1a6e5f21bd70.png)](https://www.linkedin.com/shareArticle?mini=true&url=https://github.com/p32929/let/)
+[![whatsapp](https://user-images.githubusercontent.com/6418354/179013353-f477fa0b-3e6f-4138-a357-c9991b23ff88.png)](https://api.whatsapp.com/send?text=https://github.com/p32929/let/)
 
 ---
 
