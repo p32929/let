@@ -14,10 +14,11 @@ A habit and life-event tracker for Android, iPhone and the web. Most habit apps 
 
 1. **Track anything.** Yes/no habits, numbers (sleep hours, water, workouts) and short notes (mood, important events).
 2. **See patterns.** Charts show how your events relate to each other over time.
-3. **Week view** with a calendar picker and swipe gestures to move between weeks.
-4. **Your data stays yours.** Everything is saved in a local database on your device. Nothing goes to the cloud.
-5. **Back up and move your data** with export and import (JSON).
-6. **Your own colors** for each event, and light and dark mode.
+3. **Forecast.** LET guesses what is likely in the next 14 days from your own history: the day of the week, your recent days and things that repeat every few days. Each guess shows a % chance (or a likely value) and a short reason, like "Happened on 8 of the last 10 Mondays". It needs 14 days of tracking first.
+4. **Week view** with a calendar picker and swipe gestures to move between weeks.
+5. **Your data stays yours.** Everything is saved in a local database on your device. Nothing goes to the cloud.
+6. **Back up and move your data** with export and import (JSON).
+7. **Your own colors** for each event, and light and dark mode.
 
 ## Good to know
 

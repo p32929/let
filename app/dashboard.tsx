@@ -11,7 +11,7 @@ import { getEventValuesForDateRangeComplete } from '@/db/operations/events';
 import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, differenceInDays, getDay, subMonths, addDays, isSameMonth, getDaysInMonth } from 'date-fns';
 import type { Event } from '@/types/events';
 import { isDefaultValue } from '@/lib/data-optimization';
-import { TrendingUpIcon, TrendingDownIcon, TargetIcon, CalendarIcon, AwardIcon, ActivityIcon, CheckCircle2Icon, ZapIcon, TrophyIcon, SparklesIcon, FlameIcon, AlertCircleIcon } from 'lucide-react-native';
+import { TrendingUpIcon, TrendingDownIcon, TargetIcon, CalendarIcon, AwardIcon, ActivityIcon, CheckCircle2Icon, ZapIcon, TrophyIcon, SparklesIcon, FlameIcon, AlertCircleIcon, CalendarClockIcon, ChevronRightIcon } from 'lucide-react-native';
 import Svg, { Rect, Line as SvgLine, Circle, Path, Text as SvgText } from 'react-native-svg';
 
 const screenWidth = Dimensions.get('window').width;
@@ -980,6 +980,19 @@ export default function DashboardScreen() {
         className="flex-1 p-4"
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
       >
+        {/* Forecast link */}
+        <Pressable
+          onPress={() => router.push('/forecast' as any)}
+          className="bg-white dark:bg-[#0a0a0a] border border-[#e5e5e5] dark:border-[#262626] rounded-lg p-4 mb-6 flex-row items-center"
+        >
+          <Icon as={CalendarClockIcon} className="size-6 text-[#0a0a0a] dark:text-[#fafafa] mr-3" />
+          <View className="flex-1">
+            <Text className="text-base font-semibold text-[#0a0a0a] dark:text-[#fafafa]">Forecast</Text>
+            <Text className="text-sm text-[#737373] dark:text-[#a3a3a3]">What is likely in the next 14 days, from your patterns</Text>
+          </View>
+          <Icon as={ChevronRightIcon} className="size-5 text-[#737373] dark:text-[#a3a3a3]" />
+        </Pressable>
+
         {/* Milestones */}
         <View className="mb-6">
           <View className="flex-row items-center justify-between mb-3">

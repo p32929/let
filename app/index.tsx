@@ -3,7 +3,7 @@ import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Stack, router } from 'expo-router';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon, LayoutDashboardIcon, AlertCircleIcon, InfoIcon } from 'lucide-react-native';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ArrowUpDownIcon, BarChart3Icon, MoreVerticalIcon, CheckCircleIcon, CircleDotIcon, CircleIcon, SunIcon, MoonIcon, DownloadIcon, UploadIcon, DatabaseIcon, TrashIcon, CalendarIcon, LayoutDashboardIcon, AlertCircleIcon, InfoIcon, CalendarClockIcon } from 'lucide-react-native';
 import Constants from 'expo-constants';
 import * as React from 'react';
 import { View, ScrollView, Pressable, Platform, Linking } from 'react-native';
@@ -513,6 +513,20 @@ export default function HomeScreen() {
             >
               <Icon as={BarChart3Icon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
               <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Patterns</Text>
+            </Pressable>
+            <Pressable
+              className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"
+              onPress={() => {
+                setShowMenu(false);
+                if (events.length === 0) {
+                  setShowNoEventsDialog(true);
+                } else {
+                  router.push('/forecast' as any);
+                }
+              }}
+            >
+              <Icon as={CalendarClockIcon} className="size-5 mr-3 text-[#0a0a0a] dark:text-[#fafafa]" />
+              <Text className="text-base text-[#0a0a0a] dark:text-[#fafafa]">Forecast</Text>
             </Pressable>
             <Pressable
               className="flex-row items-center px-4 py-3 border-b border-[#e5e5e5] dark:border-[#262626] hover:bg-muted/50 active:bg-[#f5f5f5] dark:active:bg-[#262626]"

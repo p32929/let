@@ -1,7 +1,7 @@
 {
   "name": "life.events.tracker",
   "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "scripts": {
     "dev": "NODE_OPTIONS=--max-old-space-size=4096 expo start -c",
     "android": "expo start -c --android",
@@ -9,6 +9,7 @@
     "web": "NODE_OPTIONS=--max-old-space-size=4096 expo start -c --web --port 3000",
     "clean": "rm -rf .expo node_modules yarn.lock",
     "typecheck": "tsc --noEmit",
+    "check:forecast": "bun lib/forecast.check.ts",
     "prepare": "husky",
     "build:any": "node scripts/build.js",
     "build:apk": "node scripts/build.js apk",
